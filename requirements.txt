@@ -1,5 +1,4 @@
-streamlit
-astral
-timezonefinder
-pandas
-pytz
+# requirements.txt
+streamlit>=1.32.0
+astral>=3.2
+timezonefinder>=6.2.0
