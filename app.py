@@ -1,5 +1,4 @@
 import io
-import time
 import requests
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -11,7 +10,7 @@ APP_TITLE = "FishyNW Wind (Every 4 Hours)"
 LOGO_FILENAME = "FishyNW-logo.png"
 
 # -----------------------------
-# Network: retries + session
+# Network session with retries
 # -----------------------------
 def make_session():
     s = requests.Session()
@@ -40,17 +39,21 @@ def safe_read_logo(path: str):
         return None
 
 
-@st.cache_data_amendable(ttl=86400)
+# -----------------------------
+# Cached API calls
+# -----------------------------
+@st.cache_data(ttl=86400)
 def geocode_city(city: str):
-    """
-    Open-Meteo geocoding (no key). Cached 24h.
-    Returns (label, lat, lon) or (None, None, None).
-    """
     if not city or not city.strip():
         return None, None, None
 
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {"name": city.strip(), "count": 1, "language": "en", "format": "json"}
+    params = {
+        "name": city.strip(),
+        "count": 1,
+        "language": "en",
+        "format": "json",
+    }
 
     r = SESSION.get(url, params=params, timeout=(8, 25))
     if r.status_code != 200:
@@ -62,16 +65,14 @@ def geocode_city(city: str):
         return None, None, None
 
     top = results[0]
-    label = ", ".join([x for x in [top.get("name"), top.get("admin1"), top.get("country")] if x])
+    label = ", ".join(
+        [x for x in [top.get("name"), top.get("admin1"), top.get("country")] if x]
+    )
     return label, float(top["latitude"]), float(top["longitude"])
 
 
 @st.cache_data(ttl=1800)
 def fetch_weather(lat: float, lon: float, day: date):
-    """
-    Open-Meteo forecast (no key). Cached 30m.
-    Returns JSON with hourly wind speed + direction.
-    """
     start = day.isoformat()
     end = (day + timedelta(days=1)).isoformat()
 
@@ -91,47 +92,26 @@ def fetch_weather(lat: float, lon: float, day: date):
     return r.json()
 
 
-def parse_iso_dt(s: str) -> datetime:
+# -----------------------------
+# Helpers
+# -----------------------------
+def parse_iso_dt(s: str):
     return datetime.fromisoformat(s)
 
 
-def wind_dir_to_text(deg: float) -> str:
+def wind_dir_to_text(deg: float):
     dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
     ix = int((deg + 22.5) // 45) % 8
     return dirs[ix]
 
 
-def pick_wind_every_4_hours(times, speeds, dirs, target_day: date):
-    """
-    Picks entries every 4 hours and keeps only the selected day.
-    Returns list of (datetime, mph, dir_text).
-    """
+def pick_wind_every_4_hours(times, speeds, dirs, target_day):
     out = []
     for i in range(0, len(times), 4):
         t = parse_iso_dt(times[i])
         if t.date() == target_day:
-            out.append((t, float(speeds[i]), wind_dir_to_text(float(dirs[i]))))
+            out.append((t, speeds[i], dirs[i]))
     return out
-
-
-def make_wind_chart(times, speeds, title: str):
-    x = [parse_iso_dt(t) for t in times]
-    y = [float(v) for v in speeds]
-
-    fig = plt.figure(figsize=(10, 3.2), dpi=160)
-    ax = fig.add_subplot(111)
-    ax.plot(x, y)
-    ax.set_title(title)
-    ax.set_ylabel("Wind (mph)")
-    ax.set_xlabel("Time")
-    fig.autofmt_xdate()
-
-    buf = io.BytesIO()
-    fig.tight_layout()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    buf.seek(0)
-    return buf
 
 
 # -----------------------------
@@ -139,30 +119,28 @@ def make_wind_chart(times, speeds, title: str):
 # -----------------------------
 st.set_page_config(page_title=APP_TITLE, layout="centered")
 
-logo_bytes = safe_read_logo(LOGO_FILENAME)
-if logo_bytes:
-    st.image(logo_bytes, use_container_width=True)
+logo = safe_read_logo(LOGO_FILENAME)
+if logo:
+    st.image(logo, use_container_width=True)
 
 st.title(APP_TITLE)
-st.caption("One day only. Wind shown every 4 hours with direction and mph.")
+st.caption("Wind forecast shown every 4 hours with direction and mph.")
 
 with st.form("inputs"):
     col1, col2 = st.columns(2)
     with col1:
-        city = st.text_input("City / place name", value="Coeur d'Alene, ID")
+        city = st.text_input("City / place name", "Coeur d'Alene, ID")
         manual = st.checkbox("Use manual lat/lon")
     with col2:
-        target_date = st.date_input("Date", value=date.today())
-        show_chart = st.checkbox("Show wind chart image", value=True)
+        target_date = st.date_input("Date", date.today())
 
-    lat = None
-    lon = None
+    lat = lon = None
     if manual:
         c3, c4 = st.columns(2)
         with c3:
-            lat = st.number_input("Latitude", value=47.677700, format="%.6f")
+            lat = st.number_input("Latitude", value=47.6777, format="%.6f")
         with c4:
-            lon = st.number_input("Longitude", value=-116.780500, format="%.6f")
+            lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
 
     submitted = st.form_submit_button("Get wind", use_container_width=True)
 
@@ -172,51 +150,34 @@ if not submitted:
 # Resolve location
 if manual:
     place_label = "Custom location"
-    lat = float(lat)
-    lon = float(lon)
+    lat, lon = float(lat), float(lon)
 else:
     place_label, lat, lon = geocode_city(city)
-    if lat is None or lon is None:
-        st.warning("City lookup failed or timed out. Try again or switch to manual lat/lon.")
+    if lat is None:
+        st.warning("City lookup failed. Try again or use manual coordinates.")
         st.stop()
 
 st.markdown("### Location")
 st.write(f"{place_label} (lat {lat:.4f}, lon {lon:.4f})")
 
 # Fetch weather
-try:
-    wx = fetch_weather(lat, lon, target_date)
-except Exception as e:
-    st.error("Weather lookup failed. Try again in a moment.")
-    st.write(str(e))
+wx = fetch_weather(lat, lon, target_date)
+hourly = wx.get("hourly", {})
+times = hourly.get("time", [])
+speeds = hourly.get("wind_speed_10m", [])
+dirs = hourly.get("wind_direction_10m", [])
+
+if not times:
+    st.error("No wind data returned.")
     st.stop()
 
-hourly = wx.get("hourly") or {}
-times = hourly.get("time") or []
-wind_speeds = hourly.get("wind_speed_10m") or []
-wind_dirs = hourly.get("wind_direction_10m") or []
-
-if not times or not wind_speeds or not wind_dirs:
-    st.error("No wind data returned for this location/date.")
-    st.stop()
-
-# Wind bullets (every 4 hours)
+# Output
 st.markdown("### Wind (every 4 hours)")
-picked = pick_wind_every_4_hours(times, wind_speeds, wind_dirs, target_date)
+picked = pick_wind_every_4_hours(times, speeds, dirs, target_date)
 
-if not picked:
-    # fallback: show first few entries
-    for i in range(min(6, len(times))):
-        t = parse_iso_dt(times[i]).strftime("%-I:%M %p")
-        st.write(f"• {t}: {float(wind_speeds[i]):.0f} mph ({wind_dir_to_text(float(wind_dirs[i]))})")
-else:
-    for t, mph, dtxt in picked:
-        st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({dtxt})")
+for t, spd, d in picked:
+    st.write(
+        f"• {t.strftime('%-I:%M %p')}: {spd:.0f} mph ({wind_dir_to_text(d)})"
+    )
 
-# Optional chart image
-if show_chart:
-    st.markdown("### Wind chart (image)")
-    chart_buf = make_wind_chart(times, wind_speeds, f"Wind speed (mph) - {place_label}")
-    st.image(chart_buf, use_container_width=True)
-
-st.caption("FishyNW - wind every 4 hours.")
+st.caption("FishyNW • simple • one-day • low API usage")
