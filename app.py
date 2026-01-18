@@ -1,330 +1,243 @@
-import math
-from datetime import datetime, date, timedelta, time
+# app.py
+# FishyNW Fishing Times (Streamlit)
+# Fresh start: device geolocation (mobile/desktop) + manual fallback + sunrise/sunset bite windows
+#
+# Install:
+#   pip install streamlit astral timezonefinder
+#
+# Run:
+#   streamlit run app.py
 
-import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+from datetime import datetime, timedelta, date
+
 from astral import LocationInfo
 from astral.sun import sun
-from astral.moon import moonrise, moonset, phase
 from timezonefinder import TimezoneFinder
-import pytz
 
-# ================== FISHYNW BRAND SETTINGS ==================
-BRAND_NAME = "FishyNW"
-BRAND_TAGLINE = "Best Fishing Times • Solunar-style"
-BRAND_SITE = "https://fishynw.com"
-BRAND_ACCENT = "#2EC4B6"   # teal
-BRAND_DARK = "#0B1320"     # near-black navy
-BRAND_CARD = "#101B2D"     # card bg
-BRAND_TEXT = "#EAF2FF"     # light text
-BRAND_MUTED = "#A9B8D3"    # muted text
-BRAND_WARN = "#FF9F1C"     # orange
-BRAND_GOOD = "#2EC4B6"     # teal
-BRAND_BAD = "#FF4D6D"      # red/pink
-# Optional: put a logo PNG in the same folder named "fishynw_logo.png"
-LOGO_PATH = "fishynw_logo.png"
-# ============================================================
 
-# ------------------ helpers ------------------
-def minutes_between(a, b):
-    return abs((a - b).total_seconds()) / 60.0
-
-def gaussian(minutes, sigma):
-    return math.exp(-(minutes ** 2) / (2 * sigma ** 2))
-
-def clamp01(x):
-    return max(0.0, min(1.0, x))
-
-def fmt(dt):
-    # Windows-friendly fallback if %-I fails
-    if not dt:
-        return "—"
-    try:
-        return dt.strftime("%-I:%M %p")
-    except Exception:
-        return dt.strftime("%I:%M %p").lstrip("0")
-
-# ------------------ core logic ------------------
-def best_fishing_times(d: date, lat: float, lon: float):
-    tf = TimezoneFinder()
-    tzname = tf.timezone_at(lat=lat, lng=lon) or "UTC"
-    tz = pytz.timezone(tzname)
-
-    loc = LocationInfo(latitude=lat, longitude=lon, timezone=tzname)
-
-    sun_data = sun(loc.observer, date=d, tzinfo=tz)
-    sunrise = sun_data["sunrise"]
-    sunset = sun_data["sunset"]
-
-    try:
-        mr = moonrise(loc.observer, date=d, tzinfo=tz)
-    except Exception:
-        mr = None
-
-    try:
-        ms = moonset(loc.observer, date=d, tzinfo=tz)
-    except Exception:
-        ms = None
-
-    moon_phase = phase(d)
-
-    # phase boost (new + full)
-    full = 14.8
-    new_dist = min(moon_phase, 29.53 - moon_phase)
-    full_dist = abs(moon_phase - full)
-    phase_weight = clamp01(1 - min(new_dist, full_dist) / 10)
-
-    start = tz.localize(datetime.combine(d, time(0, 0)))
-    end = start + timedelta(days=1)
-
-    rows = []
-    t = start
-    step = timedelta(minutes=30)
-
-    while t < end:
-        major = 0.0
-        if mr:
-            major = max(major, gaussian(minutes_between(t, mr), 60))
-        if ms:
-            major = max(major, gaussian(minutes_between(t, ms), 60))
-
-        minor = max(
-            gaussian(minutes_between(t, sunrise), 45),
-            gaussian(minutes_between(t, sunset), 45),
-        )
-
-        crep = max(
-            gaussian(minutes_between(t, sunrise), 30),
-            gaussian(minutes_between(t, sunset), 30),
-        )
-
-        score = (0.55 * major + 0.30 * minor + 0.15 * crep)
-        score *= (0.85 + 0.15 * phase_weight)
-
-        rows.append({"time": t, "score": score})
-        t += step
-
-    df = pd.DataFrame(rows)
-    df["score_norm"] = (df["score"] - df["score"].min()) / (
-        df["score"].max() - df["score"].min() + 1e-9
-    )
-
-    top = df.sort_values("score", ascending=False).head(8)
-
-    meta = {
-        "timezone": tzname,
-        "sunrise": sunrise,
-        "sunset": sunset,
-        "moonrise": mr,
-        "moonset": ms,
-        "moon_phase": moon_phase,
-    }
-    return df, top, meta
-
-# ------------------ UI / BRAND THEME ------------------
-st.set_page_config(
-    page_title=f"{BRAND_NAME} • Best Fishing Times",
-    page_icon="🎣",
-    layout="wide",
-)
+# -------------------------
+# Page + basic styling
+# -------------------------
+st.set_page_config(page_title="FishyNW Fishing Times", page_icon="🎣", layout="centered")
 
 st.markdown(
-    f"""
-<style>
-/* --- App background --- */
-.stApp {{
-  background: radial-gradient(1200px 600px at 15% 10%, rgba(46,196,182,0.18), transparent 60%),
-              radial-gradient(900px 500px at 90% 0%, rgba(255,159,28,0.10), transparent 55%),
-              {BRAND_DARK};
-  color: {BRAND_TEXT};
-}}
-/* --- Sidebar --- */
-section[data-testid="stSidebar"] {{
-  background: linear-gradient(180deg, rgba(16,27,45,0.96), rgba(11,19,32,0.96));
-  border-right: 1px solid rgba(255,255,255,0.06);
-}}
-/* --- Typography --- */
-h1,h2,h3 {{
-  letter-spacing: -0.02em;
-}}
-/* --- Buttons --- */
-.stButton > button {{
-  background: {BRAND_ACCENT} !important;
-  color: #001219 !important;
-  border: 0 !important;
-  border-radius: 14px !important;
-  padding: 0.65rem 1rem !important;
-  font-weight: 700 !important;
-}}
-.stButton > button:hover {{
-  filter: brightness(1.04);
-  transform: translateY(-1px);
-}}
-/* --- Metric cards --- */
-div[data-testid="stMetric"] {{
-  background: rgba(16,27,45,0.92);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 18px;
-  padding: 14px 14px 10px 14px;
-}}
-div[data-testid="stMetric"] label {{
-  color: {BRAND_MUTED} !important;
-}}
-/* --- Inputs --- */
-input, textarea {{
-  border-radius: 12px !important;
-}}
-/* --- Custom cards --- */
-.fishy-card {{
-  background: rgba(16,27,45,0.92);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 18px;
-  padding: 14px 16px;
-  margin: 10px 0;
-}}
-.fishy-muted {{
-  color: {BRAND_MUTED};
-}}
-.fishy-pill {{
-  display: inline-block;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  margin-left: 8px;
-  background: rgba(46,196,182,0.18);
-  border: 1px solid rgba(46,196,182,0.30);
-  color: {BRAND_TEXT};
-}}
-.fishy-score {{
-  font-variant-numeric: tabular-nums;
-}}
-/* --- Footer --- */
-.fishy-footer {{
-  margin-top: 22px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  color: {BRAND_MUTED};
-  font-size: 0.9rem;
-}}
-a {{
-  color: {BRAND_ACCENT};
-  text-decoration: none;
-}}
-a:hover {{
-  text-decoration: underline;
-}}
-</style>
-""",
+    """
+    <style>
+      .block-container { max-width: 760px; padding-top: 1.1rem; padding-bottom: 2rem; }
+      @media (max-width: 600px){
+        .block-container { padding-top: 0.6rem; }
+        h1 { font-size: 1.6rem !important; }
+      }
+      .fishy-card {
+        border: 1px solid rgba(0,0,0,0.10);
+        border-radius: 18px;
+        padding: 14px 14px;
+        background: rgba(255,255,255,0.85);
+      }
+      .fishy-muted { color: rgba(0,0,0,0.62); font-size: 0.95rem; }
+      .fishy-title { font-weight: 800; font-size: 1.05rem; margin-bottom: 6px; }
+      .fishy-big { font-weight: 900; font-size: 1.25rem; }
+      .fishy-row { display:flex; gap:10px; flex-wrap:wrap; margin: 8px 0 6px; }
+      .fishy-pill {
+        border: 1px solid rgba(0,0,0,0.12);
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.9rem;
+        background: rgba(255,255,255,0.9);
+      }
+      .fishy-cta {
+        padding: 12px 16px;
+        border-radius: 16px;
+        border: 1px solid #ddd;
+        background: white;
+        cursor: pointer;
+        font-weight: 800;
+      }
+    </style>
+    """,
     unsafe_allow_html=True,
 )
 
-# ------------------ Header ------------------
-left, right = st.columns([1, 2], vertical_alignment="center")
-with left:
-    try:
-        st.image(LOGO_PATH, use_container_width=True)
-    except Exception:
-        st.markdown(f"## {BRAND_NAME} 🎣")
-with right:
-    st.markdown(f"## {BRAND_TAGLINE}")
-    st.markdown(
-        f"<div class='fishy-muted'>Built for kayak & PNW anglers • Powered by solunar events + twilight overlap</div>",
-        unsafe_allow_html=True,
-    )
+st.markdown("## 🎣 FishyNW Fishing Times")
+st.markdown('<div class="fishy-muted">Best windows using your device location + sunrise/sunset.</div>', unsafe_allow_html=True)
+st.write("")
 
-# ------------------ Sidebar controls ------------------
-with st.sidebar:
-    st.markdown(f"### {BRAND_NAME} Settings")
-    st.markdown(f"<div class='fishy-muted'>Pick a spot and date. Get the top bite windows.</div>", unsafe_allow_html=True)
 
-    date_input = st.date_input("Date", value=date.today())
-    lat = st.number_input("Latitude", value=47.67, format="%.6f")
-    lon = st.number_input("Longitude", value=-116.78, format="%.6f")
+# -------------------------
+# Helper: safe time format
+# -------------------------
+def fmt(t: datetime) -> str:
+    return t.strftime("%I:%M %p").lstrip("0")
 
-    st.markdown(
-        "<div class='fishy-muted'>Tip: Google Maps → right-click → “What’s here?”</div>",
-        unsafe_allow_html=True,
-    )
 
-# ------------------ Main action ------------------
-colA, colB, colC = st.columns([1.2, 1, 1], vertical_alignment="center")
-with colA:
-    run = st.button("Calculate Fishing Times")
-with colB:
-    show_table = st.toggle("Show top-times table", value=True)
-with colC:
-    show_curve = st.toggle("Show activity curve", value=True)
+def window(center: datetime, before_min: int, after_min: int):
+    return (center - timedelta(minutes=before_min), center + timedelta(minutes=after_min))
 
-if run:
-    df, top, meta = best_fishing_times(date_input, lat, lon)
 
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Timezone", meta["timezone"])
-    m2.metric("Sunrise", fmt(meta["sunrise"]))
-    m3.metric("Sunset", fmt(meta["sunset"]))
-    m4.metric("Moonrise", fmt(meta["moonrise"]))
-    m5.metric("Moonset", fmt(meta["moonset"]))
-
-    st.markdown("### 🔥 Best Bite Windows (Fishy Score)")
-    for _, row in top.iterrows():
-        score = float(row["score_norm"])
-        pill = "HOT" if score >= 0.85 else ("GOOD" if score >= 0.70 else "OK")
-        st.markdown(
-            f"""
-<div class="fishy-card">
-  <div style="display:flex; justify-content:space-between; align-items:center;">
-    <div>
-      <span style="font-size:1.1rem; font-weight:800;">{fmt(row['time'])}</span>
-      <span class="fishy-pill">{pill}</span>
-      <div class="fishy-muted">Local time • 30-minute window centerpoint</div>
+# -------------------------
+# 1) Device geolocation (browser prompt)
+# -------------------------
+geo = components.html(
+    """
+    <div style="font-family: system-ui; font-size: 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <button id="btn" class="fishy-cta">📍 Use my device location</button>
+      <span id="status" style="color:#666; line-height:1.2;"></span>
     </div>
-    <div class="fishy-score" style="font-size:1.4rem; font-weight:900;">
-      {score:.2f}
+
+    <script>
+      const statusEl = document.getElementById("status");
+      const btn = document.getElementById("btn");
+
+      function sendToStreamlit(payload) {
+        window.parent.postMessage(
+          { isStreamlitMessage: true, type: "streamlit:setComponentValue", value: payload },
+          "*"
+        );
+      }
+
+      btn.addEventListener("click", () => {
+        statusEl.textContent = "Requesting location…";
+
+        if (!navigator.geolocation) {
+          statusEl.textContent = "Geolocation not supported.";
+          sendToStreamlit({ ok: false, error: "Geolocation not supported" });
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const acc = pos.coords.accuracy;
+            statusEl.textContent = `Got it: ${lat.toFixed(5)}, ${lon.toFixed(5)} (±${Math.round(acc)}m)`;
+            sendToStreamlit({ ok: true, lat: lat, lon: lon, acc_m: acc });
+          },
+          (err) => {
+            statusEl.textContent = "Location blocked/unavailable. Use manual input below.";
+            sendToStreamlit({ ok: false, error: err.message || "Location error" });
+          },
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+        );
+      });
+    </script>
+    """,
+    height=70,
+    key="geo_component",
+)
+
+# -------------------------
+# 2) Manual fallback
+# -------------------------
+with st.expander("Manual location (if blocked)"):
+    c1, c2 = st.columns(2)
+    with c1:
+        manual_lat = st.number_input("Latitude", value=47.677700, format="%.6f")
+    with c2:
+        manual_lon = st.number_input("Longitude", value=-116.780500, format="%.6f")
+    use_manual = st.button("Use manual coordinates", type="primary")
+
+
+# -------------------------
+# Choose coordinates
+# -------------------------
+lat = lon = None
+acc_m = None
+
+if isinstance(geo, dict) and geo.get("ok"):
+    lat, lon = float(geo["lat"]), float(geo["lon"])
+    acc_m = geo.get("acc_m")
+elif use_manual:
+    lat, lon = float(manual_lat), float(manual_lon)
+
+if lat is None or lon is None:
+    st.info("Tap **📍 Use my device location**. If it’s blocked, open **Manual location**.")
+    st.stop()
+
+st.markdown(
+    f"""
+    <div class="fishy-row">
+      <div class="fishy-pill"><b>Lat</b> {lat:.5f}</div>
+      <div class="fishy-pill"><b>Lon</b> {lon:.5f}</div>
+      <div class="fishy-pill"><b>Accuracy</b> {"±"+str(int(acc_m))+"m" if acc_m else "—"}</div>
     </div>
-  </div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
+    """,
+    unsafe_allow_html=True,
+)
 
-    if show_table:
-        st.markdown("### 📋 Top Times Table")
-        table = top.copy()
-        table["time_local"] = table["time"].apply(fmt)
-        table["fishy_score"] = table["score_norm"].round(3)
-        st.dataframe(table[["time_local", "fishy_score"]], use_container_width=True, hide_index=True)
 
-    if show_curve:
-        st.markdown("### 📈 Full-Day Activity Curve")
-        st.line_chart(df.set_index("time")["score_norm"], height=320)
+# -------------------------
+# Timezone + sun times
+# -------------------------
+tf = TimezoneFinder()
+tz_name = tf.timezone_at(lat=lat, lng=lon) or "UTC"
 
+loc = LocationInfo(name="You", region="Here", timezone=tz_name, latitude=lat, longitude=lon)
+
+st.write("")
+day = st.date_input("Date", value=date.today())
+
+s = sun(loc.observer, date=day, tzinfo=loc.timezone)
+sunrise = s["sunrise"]
+sunset = s["sunset"]
+
+# Simple, understandable bite windows
+am_start, am_end = window(sunrise, before_min=60, after_min=90)
+pm_start, pm_end = window(sunset, before_min=90, after_min=60)
+
+
+# -------------------------
+# UI output
+# -------------------------
+st.markdown("### Today’s Fishing Windows")
+
+col1, col2 = st.columns(2, gap="medium")
+
+with col1:
     st.markdown(
         f"""
-<div class="fishy-footer">
-  <div><strong>{BRAND_NAME}</strong> • Solunar-style prediction (moonrise/set + sunrise/sunset + twilight overlap).</div>
-  <div>Want this embedded on your site? Link: <a href="{BRAND_SITE}" target="_blank">{BRAND_SITE}</a></div>
-</div>
-""",
+        <div class="fishy-card">
+          <div class="fishy-title">Morning bite</div>
+          <div class="fishy-muted">Around sunrise</div>
+          <div style="height:10px;"></div>
+
+          <div class="fishy-muted">Sunrise</div>
+          <div class="fishy-big">{fmt(sunrise)}</div>
+
+          <div style="height:10px;"></div>
+          <div class="fishy-muted">Best window</div>
+          <div class="fishy-big">{fmt(am_start)} – {fmt(am_end)}</div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-else:
+with col2:
     st.markdown(
-        """
-<div class="fishy-card">
-  <div style="font-size:1.05rem; font-weight:800;">How this works</div>
-  <div class="fishy-muted" style="margin-top:6px;">
-    We score the day using solunar-style signals:
-    <ul>
-      <li><b>Major periods</b>: around <b>moonrise</b> and <b>moonset</b></li>
-      <li><b>Minor periods</b>: around <b>sunrise</b> and <b>sunset</b></li>
-      <li>Extra love for <b>dawn/dusk overlap</b></li>
-      <li>Small nudge for <b>moon phase</b> near new/full</li>
-    </ul>
-    Hit <b>Calculate Fishing Times</b> to generate your Fishy Score windows.
-  </div>
-</div>
-""",
+        f"""
+        <div class="fishy-card">
+          <div class="fishy-title">Evening bite</div>
+          <div class="fishy-muted">Around sunset</div>
+          <div style="height:10px;"></div>
+
+          <div class="fishy-muted">Sunset</div>
+          <div class="fishy-big">{fmt(sunset)}</div>
+
+          <div style="height:10px;"></div>
+          <div class="fishy-muted">Best window</div>
+          <div class="fishy-big">{fmt(pm_start)} – {fmt(pm_end)}</div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
+
+st.caption(f"Timezone: {tz_name}")
+
+
+# -------------------------
+# Footer / branding
+# -------------------------
+st.markdown("---")
+st.markdown("**FishyNW** • Fish the Northwest • 🎥 + 🎣")
+st.markdown("fishynw.com")
