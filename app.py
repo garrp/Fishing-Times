@@ -1,11 +1,10 @@
 import math
+from dataclasses import dataclass
 from datetime import datetime, date, timedelta
 import pytz
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+import plotly.graph_objects as go
 
 from astral import LocationInfo
 from astral.sun import sun
@@ -24,9 +23,10 @@ st.set_page_config(
 # ----------------------------
 # Styling
 # ----------------------------
-st.markdown("""
+st.markdown(
+    """
 <style>
-.block-container { max-width: 1150px; padding-top: 1.2rem; }
+.block-container { max-width: 1150px; padding-top: 1.2rem; padding-bottom: 2.2rem; }
 .fishynw-card {
   background: rgba(17,26,46,.55);
   border-radius: 18px;
@@ -38,184 +38,372 @@ st.markdown("""
   display:inline-flex; gap:8px; padding:6px 10px;
   border-radius:999px; font-size:12px;
   border:1px solid rgba(255,255,255,.12);
+  background: rgba(10,16,30,.35);
 }
 .footer { margin-top:28px; text-align:center; font-size:12px; color:#9fb2d9; }
 .footer a { color:#6fd3ff; text-decoration:none; }
+.small { font-size:12px; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ----------------------------
 # Helpers
 # ----------------------------
-def clamp(x, a, b):
+def clamp(x: float, a: float, b: float) -> float:
     return max(a, min(b, x))
 
-def gaussian(x, mu, sigma):
+def gaussian(x: float, mu: float, sigma: float) -> float:
     return math.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
-def minutes_since_midnight(dt, tz):
+def minutes_since_midnight(dt: datetime, tz: pytz.BaseTzInfo) -> int:
     local = dt.astimezone(tz)
     return local.hour * 60 + local.minute
 
-def to_datetime(minutes, base_date, tz):
-    return tz.localize(datetime(
-        base_date.year,
-        base_date.month,
-        base_date.day,
-        int(minutes // 60),
-        int(minutes % 60)
-    ))
+def local_naive_datetime(d: date, minute_of_day: int) -> datetime:
+    # naive local time; Plotly handles these well
+    return datetime(d.year, d.month, d.day, minute_of_day // 60, minute_of_day % 60)
+
+def fmt_time_local_naive(dt: datetime) -> str:
+    # dt is naive local
+    return dt.strftime("%-I:%M %p")
+
+def peak_indices(y, min_separation=90, top_k=6):
+    """
+    Find local maxima indices, pick top_k by value, enforce min separation (minutes).
+    y is per-minute array.
+    """
+    cands = []
+    for i in range(1, len(y) - 1):
+        if y[i] >= y[i - 1] and y[i] >= y[i + 1]:
+            cands.append(i)
+
+    cands.sort(key=lambda i: y[i], reverse=True)
+
+    chosen = []
+    for i in cands:
+        if len(chosen) >= top_k:
+            break
+        ok = True
+        for j in chosen:
+            if abs(i - j) < min_separation:
+                ok = False
+                break
+        if ok:
+            chosen.append(i)
+
+    chosen.sort()
+    return chosen
 
 # ----------------------------
-# Geocoding
+# Geocoding (Open-Meteo)
 # ----------------------------
-US_STATES = {
-    "ID":"Idaho","WA":"Washington","OR":"Oregon","MT":"Montana","CA":"California"
-}
+def geocode_city_state(city: str, state: str):
+    if not city.strip() or not state.strip():
+        raise ValueError("Enter City and State.")
 
-def geocode_city_state(city, state):
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    r = requests.get(url, params={"name": city, "count": 20}, timeout=10)
+    r = requests.get(
+        url,
+        params={"name": city.strip(), "count": 25, "language": "en", "format": "json"},
+        timeout=12,
+    )
     r.raise_for_status()
-    results = r.json().get("results", [])
-
+    results = r.json().get("results") or []
     if not results:
-        raise ValueError("City not found")
+        raise ValueError("City not found.")
 
-    for r in results:
-        if r.get("country_code") == "US" and state.upper() in (r.get("admin1","").upper()):
-            return r["latitude"], r["longitude"], f"{r['name']}, {r['admin1']}"
+    state_u = state.strip().upper()
+    us = [x for x in results if (x.get("country_code") or "").upper() == "US"]
+    if not us:
+        raise ValueError("No US matches found.")
 
-    r = results[0]
-    return r["latitude"], r["longitude"], r["name"]
+    # Prefer state match in admin1
+    for x in us:
+        admin1 = (x.get("admin1") or "").upper()
+        if state_u in admin1:
+            return float(x["latitude"]), float(x["longitude"]), f"{x['name']}, {x.get('admin1','')}"
+    x = us[0]
+    return float(x["latitude"]), float(x["longitude"]), f"{x['name']}, {x.get('admin1','')}"
 
 # ----------------------------
-# Astronomy
+# Astronomy per-day events
 # ----------------------------
-def get_events(day, lat, lon, tz):
+def get_events(d: date, lat: float, lon: float, tz: pytz.BaseTzInfo):
     loc = LocationInfo("", "", tz.zone, lat, lon)
-    s = sun(loc.observer, date=day, tzinfo=tz)
+    s = sun(loc.observer, date=d, tzinfo=tz)
 
     obs = ephem.Observer()
     obs.lat, obs.lon = str(lat), str(lon)
-    obs.date = tz.localize(datetime(day.year, day.month, day.day)).astimezone(pytz.utc)
+
+    local_midnight = tz.localize(datetime(d.year, d.month, d.day, 0, 0, 0))
+    obs.date = local_midnight.astimezone(pytz.utc)
 
     moon = ephem.Moon()
     moonrise = moonset = None
-
     try:
         moonrise = ephem.Date(obs.next_rising(moon)).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
-    except: pass
+    except:
+        pass
     try:
         moonset = ephem.Date(obs.next_setting(moon)).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
-    except: pass
+    except:
+        pass
 
-    # Moon overhead / underfoot (sampled)
-    best_hi = (-999, None)
-    best_lo = (999, None)
-    t = tz.localize(datetime(day.year, day.month, day.day))
-    for _ in range(288):  # every 5 min
+    # overhead/underfoot by sampling every 5 minutes
+    best_hi_alt = -999.0
+    best_lo_alt = 999.0
+    best_hi_time = None
+    best_lo_time = None
+
+    t = tz.localize(datetime(d.year, d.month, d.day, 0, 0, 0))
+    for _ in range(288):  # 24h * 60 / 5
         obs.date = t.astimezone(pytz.utc)
         moon.compute(obs)
         alt = float(moon.alt)
-        if alt > best_hi[0]: best_hi = (alt, t)
-        if alt < best_lo[0]: best_lo = (alt, t)
+        if alt > best_hi_alt:
+            best_hi_alt = alt
+            best_hi_time = t
+        if alt < best_lo_alt:
+            best_lo_alt = alt
+            best_lo_time = t
         t += timedelta(minutes=5)
 
     return {
-        "sunrise": s["sunrise"],
-        "sunset": s["sunset"],
+        "sunrise": s.get("sunrise"),
+        "sunset": s.get("sunset"),
         "moonrise": moonrise,
         "moonset": moonset,
-        "overhead": best_hi[1],
-        "underfoot": best_lo[1],
+        "overhead": best_hi_time,
+        "underfoot": best_lo_time,
     }
 
 # ----------------------------
-# Bite curve (PURE FLOAT MATH)
+# Bite curve for one day (per-minute, float math)
 # ----------------------------
-def build_bite_curve(day, tz, events):
+def build_day_curve(d: date, tz: pytz.BaseTzInfo, events: dict):
     centers = []
     weights = []
+    sigmas = []
 
-    def add(dt, w):
+    def add(dt, w, sigma):
         if dt:
             centers.append(minutes_since_midnight(dt, tz))
             weights.append(w)
+            sigmas.append(sigma)
 
-    add(events["overhead"], 1.0)
-    add(events["underfoot"], 1.0)
-    add(events["moonrise"], 0.6)
-    add(events["moonset"], 0.6)
-    add(events["sunrise"], 0.5)
-    add(events["sunset"], 0.5)
+    # Major
+    add(events.get("overhead"), 1.00, 95)
+    add(events.get("underfoot"), 1.00, 95)
+    # Minor
+    add(events.get("moonrise"), 0.65, 55)
+    add(events.get("moonset"), 0.65, 55)
+    # Sun bonus
+    add(events.get("sunrise"), 0.55, 50)
+    add(events.get("sunset"), 0.55, 50)
 
-    xs = []
-    ys = []
-
+    x = []
+    y = []
     for m in range(1440):
-        val = 25
-        for c, w in zip(centers, weights):
-            d = min(abs(m - c), 1440 - abs(m - c))
-            sigma = 90 if w >= 1 else 55
-            val += w * 60 * gaussian(d, 0, sigma)
-        ys.append(clamp(val, 0, 100))
-        xs.append(to_datetime(m, day, tz))
-
-    return xs, ys
+        val = 25.0  # baseline
+        for c, w, sig in zip(centers, weights, sigmas):
+            dmin = min(abs(m - c), 1440 - abs(m - c))
+            val += w * 60.0 * gaussian(dmin, 0.0, sig)
+        x.append(local_naive_datetime(d, m))
+        y.append(clamp(val, 0, 100))
+    return x, y
 
 # ----------------------------
-# Header
+# Multi-day series
 # ----------------------------
-st.markdown("""
+def build_multi_day(start_day: date, days: int, lat: float, lon: float, tz: pytz.BaseTzInfo):
+    all_x = []
+    all_y = []
+    day_ranges = []  # (day_label, start_idx, end_idx)
+
+    idx = 0
+    for i in range(days):
+        d = start_day + timedelta(days=i)
+        ev = get_events(d, lat, lon, tz)
+        x, y = build_day_curve(d, tz, ev)
+
+        all_x.extend(x)
+        all_y.extend(y)
+
+        day_ranges.append((d.strftime("%a %b %-d"), idx, idx + len(x) - 1))
+        idx += len(x)
+
+    return all_x, all_y, day_ranges
+
+# ----------------------------
+# App header
+# ----------------------------
+st.markdown(
+    """
 <div class="fishynw-card">
-  <h2>🎣 FishyNW Fishing Times</h2>
-  <div class="muted">Visual bite index based on moon and sun timing</div>
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div style="font-size:28px;">🎣</div>
+    <div>
+      <div style="font-size:20px; font-weight:700;">FishyNW Fishing Times</div>
+      <div class="muted" style="font-size:13px;">
+        Multi-day bite index with a 24-hour scrubber and labeled peaks.
+      </div>
+    </div>
+  </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 tz = pytz.timezone("America/Los_Angeles")
-today = datetime.now(tz).date()
+st.write("")
 
-# ----------------------------
-# Controls
-# ----------------------------
-with st.container():
+colA, colB = st.columns([1.15, 0.85], gap="large")
+
+with colA:
     st.markdown('<div class="fishynw-card">', unsafe_allow_html=True)
-    day = st.date_input("Date", value=today)
+
+    start_day = st.date_input("Start date", value=datetime.now(tz).date())
+    days = st.selectbox("Days to show", [2, 3], index=0)
 
     city = st.text_input("City", "Coeur d'Alene")
     state = st.text_input("State", "ID")
 
-    if st.button("Generate Graph"):
-        try:
-            lat, lon, place = geocode_city_state(city, state)
-            events = get_events(day, lat, lon, tz)
-            xs, ys = build_bite_curve(day, tz, events)
+    st.markdown('<div class="muted small">The scrubber controls a fixed 24-hour window across the selected days.</div>',
+                unsafe_allow_html=True)
 
-            fig, ax = plt.subplots(figsize=(11, 4.8))
-            ax.plot(xs, ys, linewidth=2)
-            ax.set_ylim(0, 100)
-            ax.set_ylabel("Bite Index")
-            ax.set_title(f"Bite Index • {place}")
-
-            ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("%-I %p"))
-            ax.grid(alpha=0.25)
-
-            st.pyplot(fig)
-
-        except Exception as e:
-            st.error(str(e))
+    go_btn = st.button("Generate multi-day graph", type="primary")
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+with colB:
+    st.markdown(
+        """
+<div class="fishynw-card">
+  <div style="font-size:16px; font-weight:700; margin-bottom:6px;">Controls</div>
+  <div class="muted" style="font-size:13px; line-height:1.55;">
+    <ul style="margin:0; padding-left:18px;">
+      <li>Use the scrubber to slide a 24-hour window across the timeline.</li>
+      <li>Peak labels show the strongest bite moments in the visible window.</li>
+      <li>Pinch/drag to zoom and inspect details.</li>
+    </ul>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+# ----------------------------
+# Graph + scrubber
+# ----------------------------
+if go_btn:
+    try:
+        lat, lon, place = geocode_city_state(city, state)
+        x, y, day_ranges = build_multi_day(start_day, days, lat, lon, tz)
+
+        total_minutes = days * 1440
+        window_minutes = 1440  # fixed 24-hour window
+        max_start = total_minutes - window_minutes
+        step = 15  # smoother scrub
+
+        # Scrubber value is minutes offset from start_day midnight
+        scrub = st.slider(
+            "Time scrubber (24-hour window)",
+            min_value=0,
+            max_value=max_start,
+            value=0,
+            step=step,
+        )
+
+        # Convert scrub offset into x-axis range
+        # x is per-minute list across multiple days, so index aligns with minutes.
+        i0 = scrub
+        i1 = scrub + window_minutes - 1
+
+        x0 = x[i0]
+        x1 = x[i1]
+
+        # Peak labels: find top peaks inside visible window only
+        y_window = y[i0:i1 + 1]
+        peaks = peak_indices(y_window, min_separation=90, top_k=5)  # indices relative to window
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name="Bite Index"))
+
+        # Add peak labels (within visible window)
+        # Keep them readable by nudging label slightly above the line.
+        for pi in peaks:
+            abs_i = i0 + pi
+            px = x[abs_i]
+            py = y[abs_i]
+            fig.add_trace(
+                go.Scatter(
+                    x=[px],
+                    y=[py],
+                    mode="markers+text",
+                    text=[f"{int(round(py))}"],
+                    textposition="top center",
+                    marker=dict(size=8),
+                    showlegend=False,
+                    hovertemplate="%{x|%a %b %-d, %-I:%M %p}<br>Bite: %{y:.0f}<extra></extra>",
+                )
+            )
+
+        # Vertical day dividers + small day labels (subtle)
+        for label, di0, _di1 in day_ranges:
+            d_start = x[di0]
+            fig.add_vline(x=d_start, line_dash="dot", opacity=0.25)
+            # Put day label near top within overall chart; only if within or near window for cleanliness
+            if x0 <= d_start <= x1:
+                fig.add_annotation(
+                    x=d_start,
+                    y=100,
+                    text=label,
+                    showarrow=False,
+                    yanchor="top",
+                    xanchor="left",
+                    opacity=0.7,
+                )
+
+        fig.update_xaxes(range=[x0, x1])
+        fig.update_yaxes(range=[0, 100], title="Bite Index (0–100)")
+
+        fig.update_layout(
+            title=f"Bite Index • {place} • {days}-day timeline",
+            margin=dict(l=10, r=10, t=45, b=10),
+            height=460,
+            showlegend=False,
+            hovermode="x unified",
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Small pills for window bounds (keeps it “graph-first” but clarifies what you’re viewing)
+        st.markdown(
+            f"""
+<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
+  <div class="pill">Window start: <b>{x0.strftime("%a %b %-d")} {fmt_time_local_naive(x0)}</b></div>
+  <div class="pill">Window end: <b>{x1.strftime("%a %b %-d")} {fmt_time_local_naive(x1)}</b></div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    except Exception as e:
+        st.error(str(e))
+
 
 # ----------------------------
 # Footer
 # ----------------------------
-st.markdown("""
+st.markdown(
+    """
 <div class="footer">
-  🎣 <b>FishyNW</b> • <a href="https://fishynw.com" target="_blank">fishynw.com</a><br>
+  🎣 <b>FishyNW</b> • <a href="https://fishynw.com" target="_blank" rel="noopener">fishynw.com</a><br>
   Pacific Northwest Fishing • #adventure
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
