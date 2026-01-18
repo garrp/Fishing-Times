@@ -3,4 +3,4 @@ requests>=2.31
 pytz>=2024.1
 astral>=3.2
 pyephem>=9.99
-plotly>=5.20
+matplotlib>=3.8
