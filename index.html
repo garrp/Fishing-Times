@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FishyNW Fishing Times</title>
+  <meta name="description" content="FishyNW: best fishing times using Solunar-style moon and sun periods. Use GPS or City/State." />
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#111a2e;
+      --muted:#8ea0c7;
+      --text:#eaf0ff;
+      --accent:#3bd4ff;
+      --accent2:#6cff9a;
+      --danger:#ff5d5d;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, rgba(59,212,255,.18), transparent 60%),
+                  radial-gradient(900px 500px at 90% 10%, rgba(108,255,154,.12), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+    header{
+      padding:22px 16px 10px;
+      max-width:980px;
+      margin:0 auto;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .logo{
+      width:44px;height:44px;border-radius:14px;
+      background: linear-gradient(135deg, rgba(59,212,255,.95), rgba(108,255,154,.9));
+      box-shadow: var(--shadow);
+      position:relative;
+      overflow:hidden;
+    }
+    .logo:before{
+      content:"";
+      position:absolute; inset:-20%;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255,255,255,.6), transparent 45%),
+        radial-gradient(circle at 70% 70%, rgba(0,0,0,.25), transparent 60%);
+      transform: rotate(20deg);
+    }
+    h1{
+      margin:0;
+      font-size:20px;
+      letter-spacing:.2px;
+    }
+    .sub{
+      margin:6px 0 0;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.35;
+    }
+    main{
+      max-width:980px;
+      margin:0 auto;
+      padding:12px 16px 60px;
+    }
+    .grid{
+      display:grid;
+      gap:14px;
+      grid-template-columns: 1.1fr .9fr;
+    }
+    @media (max-width: 860px){
+      .grid{grid-template-columns:1fr}
+    }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 26%),
+                  rgba(17,26,46,.92);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding:16px;
+    }
+    .row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    label{
+      font-size:12px;
+      color:var(--muted);
+      display:block;
+      margin-bottom:6px;
+    }
+    input, select, button{
+      font: inherit;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(10,16,30,.75);
+      color:var(--text);
+      outline:none;
+    }
+    input::placeholder{color:rgba(142,160,199,.7)}
+    input:focus, select:focus{
+      border-color: rgba(59,212,255,.55);
+      box-shadow: 0 0 0 4px rgba(59,212,255,.12);
+    }
+    button{
+      cursor:pointer;
+      border:1px solid rgba(59,212,255,.45);
+      background: linear-gradient(135deg, rgba(59,212,255,.22), rgba(108,255,154,.12));
+    }
+    button:hover{transform: translateY(-1px)}
+    button:active{transform: translateY(0px)}
+    .btnPrimary{
+      border-color: rgba(108,255,154,.55);
+      background: linear-gradient(135deg, rgba(108,255,154,.22), rgba(59,212,255,.12));
+    }
+    .btnDanger{
+      border-color: rgba(255,93,93,.55);
+      background: linear-gradient(135deg, rgba(255,93,93,.18), rgba(59,212,255,.08));
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      color: var(--muted);
+      font-size:12px;
+    }
+    .kpi{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:12px;
+    }
+    .kpi .box{
+      flex:1;
+      min-width:180px;
+      padding:12px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(10,16,30,.55);
+    }
+    .kpi .big{
+      font-size:22px;
+      margin-top:4px;
+    }
+    .muted{color:var(--muted)}
+    .times{
+      margin-top:14px;
+      display:grid;
+      gap:10px;
+    }
+    .timeItem{
+      padding:12px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(10,16,30,.52);
+    }
+    .timeItem h3{
+      margin:0 0 6px;
+      font-size:14px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:baseline;
+    }
+    .badge{
+      font-size:12px;
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      color: var(--text);
+      background: rgba(255,255,255,.06);
+    }
+    .good{border-color: rgba(108,255,154,.35)}
+    .okay{border-color: rgba(59,212,255,.35)}
+    .warn{border-color: rgba(255,93,93,.35)}
+    .err{
+      color: var(--danger);
+      font-size:13px;
+      margin-top:10px;
+      line-height:1.35;
+    }
+    .foot{
+      margin-top:12px;
+      font-size:12px;
+      color: var(--muted);
+      line-height:1.35;
+    }
+    .divider{
+      height:1px;
+      background: rgba(255,255,255,.08);
+      margin:12px 0;
+    }
+    a{color: var(--accent)}
+    .small{font-size:12px}
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div>
+        <h1>FishyNW Fishing Times</h1>
+        <p class="sub">Solunar-style “best bite” windows using moon overhead/underfoot + moonrise/set. Use GPS or City/State.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="pill" id="statusPill">📍 Location: <span id="locText">Not set</span></div>
+        <div class="pill">🕒 Device time: <span id="tzText"></span></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <div style="flex:1; min-width:240px;">
+          <label for="dateInput">Date</label>
+          <input id="dateInput" type="date" />
+        </div>
+
+        <div style="flex:1; min-width:240px;">
+          <label for="methodSelect">Location method</label>
+          <select id="methodSelect">
+            <option value="gps">Use device GPS (optional)</option>
+            <option value="city">City + State (no GPS)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="gpsBtn" class="btnPrimary">Use my location</button>
+
+        <div id="cityWrap" style="display:none; width:100%;">
+          <div class="row">
+            <div style="flex:1; min-width:180px;">
+              <label for="cityInput">City</label>
+              <input id="cityInput" placeholder="Coeur d'Alene" autocomplete="address-level2" />
+            </div>
+            <div style="width:160px; min-width:140px;">
+              <label for="stateInput">State</label>
+              <input id="stateInput" placeholder="ID" maxlength="2" autocomplete="address-level1" />
+            </div>
+            <button id="lookupBtn" class="btnPrimary" style="align-self:flex-end;">Find</button>
+          </div>
+          <div class="small muted" style="margin-top:6px;">
+            Uses Open-Meteo geocoding (no key). If your city name repeats, we’ll pick the best match.
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <button id="calcBtn">Calculate fishing times</button>
+        <button id="clearBtn" class="btnDanger">Clear</button>
+      </div>
+
+      <div id="err" class="err" style="display:none;"></div>
+
+      <div class="kpi" id="kpi" style="display:none;">
+        <div class="box">
+          <div class="muted">Overall bite score</div>
+          <div class="big" id="scoreText">—</div>
+          <div class="muted small" id="scoreNote"></div>
+        </div>
+        <div class="box">
+          <div class="muted">Moon phase</div>
+          <div class="big" id="phaseText">—</div>
+          <div class="muted small" id="illumText"></div>
+        </div>
+        <div class="box">
+          <div class="muted">Sun</div>
+          <div class="big" id="sunText">—</div>
+          <div class="muted small" id="moonText">—</div>
+        </div>
+      </div>
+
+      <div class="times" id="times"></div>
+
+      <div class="foot">
+        Notes: This is a practical “Solunar-style” estimator. Actual bite depends on weather, season, pressure, water temp, and species behavior.
+      </div>
+    </section>
+
+    <aside class="card">
+      <h2 style="margin:0 0 10px; font-size:16px;">How it works</h2>
+      <div class="muted" style="font-size:13px; line-height:1.5;">
+        <p style="margin-top:0;">
+          This app estimates bite windows using classic Solunar inputs:
+        </p>
+        <ul style="margin:0; padding-left:18px;">
+          <li><b>Major periods</b> = moon overhead + moon underfoot (approx. peak/min altitude)</li>
+          <li><b>Minor periods</b> = moonrise + moonset</li>
+          <li><b>Moon phase boost</b> favors new & full moons slightly</li>
+        </ul>
+        <div class="divider"></div>
+        <p style="margin:0;">
+          Want to make it more “PNW specific”? Add species presets (kokanee, smallmouth, trout) and weight sunrise/sunset harder for each.
+        </p>
+        <div class="divider"></div>
+        <p class="small" style="margin:0;">
+          FishyNW • Built for desktop + mobile • Works as a static site (GitHub Pages, Netlify, etc.)
+        </p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- SunCalc: tiny library for sun/moon calculations -->
+  <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+
+  <script>
+    // ---------- Helpers ----------
+    const $ = (id) => document.getElementById(id);
+
+    function fmtTime(d){
+      if(!d || isNaN(d)) return "—";
+      return d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+    }
+
+    function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+    function setError(msg){
+      const el = $("err");
+      if(!msg){
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.style.display = "block";
+      el.textContent = msg;
+    }
+
+    function setLocationText(text){
+      $("locText").textContent = text;
+    }
+
+    function dayStartLocal(date){
+      // date: Date. Return local midnight for that date.
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0,0,0,0);
+    }
+
+    function addMinutes(date, mins){
+      return new Date(date.getTime() + mins*60000);
+    }
+
+    function windowText(center, minutes){
+      const start = addMinutes(center, -minutes);
+      const end   = addMinutes(center,  minutes);
+      return `${fmtTime(start)} – ${fmtTime(end)}`;
+    }
+
+    // Approximate moon overhead (max altitude) and underfoot (min altitude)
+    // by sampling across the day and then refining around best sample.
+    function findMoonExtrema(lat, lon, dateLocal){
+      const start = dayStartLocal(dateLocal);
+      const samples = 24 * 12; // every 5 minutes
+      let bestMax = {t:null, v:-Infinity};
+      let bestMin = {t:null, v: Infinity};
+
+      for(let i=0;i<=samples;i++){
+        const t = new Date(start.getTime() + i*(24*60*60000)/samples);
+        const mp = SunCalc.getMoonPosition(t, lat, lon);
+        const alt = mp.altitude; // radians
+        if(alt > bestMax.v) bestMax = {t, v: alt};
+        if(alt < bestMin.v) bestMin = {t, v: alt};
+      }
+      return { overhead: bestMax.t, underfoot: bestMin.t };
+    }
+
+    function phaseLabel(phase){
+      // SunCalc phase: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter
+      const p = phase;
+      const near = (x, eps=0.03)=> Math.abs(p - x) <= eps;
+      if(near(0) || near(1)) return "New";
+      if(near(0.25)) return "First Quarter";
+      if(near(0.5)) return "Full";
+      if(near(0.75)) return "Last Quarter";
+      if(p < 0.25) return "Waxing Crescent";
+      if(p < 0.5)  return "Waxing Gibbous";
+      if(p < 0.75) return "Waning Gibbous";
+      return "Waning Crescent";
+    }
+
+    function phaseBoost(phase){
+      // Favor new/full a bit (simple curve)
+      // Map distance from (0 or 0.5) to boost.
+      const dNew = Math.min(Math.abs(phase-0), Math.abs(phase-1));
+      const dFull = Math.abs(phase-0.5);
+      const d = Math.min(dNew, dFull);
+      // d in [0..0.25], convert to boost in [1.15..0.95]
+      return 1.15 - (d/0.25)*0.20;
+    }
+
+    function scoreFromInputs(phase, hasMoonriseSet){
+      let base = 70;
+      base *= phaseBoost(phase);
+      if(!hasMoonriseSet) base *= 0.95;
+      return Math.round(clamp(base, 0, 100));
+    }
+
+    function bucket(score){
+      if(score >= 82) return {label:"Hot", cls:"good"};
+      if(score >= 68) return {label:"Good", cls:"okay"};
+      return {label:"Tough", cls:"warn"};
+    }
+
+    // ---------- Location state ----------
+    let state = {
+      lat: null,
+      lon: null,
+      place: null
+    };
+
+    async function geocodeCityState(city, stateCode){
+      const q = encodeURIComponent(`${city}, ${stateCode}, USA`);
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${q}&count=5&language=en&format=json`;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("Geocoding failed.");
+      const data = await res.json();
+      if(!data.results || !data.results.length) throw new Error("No matches found for that city/state.");
+
+      // pick best US match with matching admin1_code if possible
+      const desired = (stateCode || "").toUpperCase();
+      let best = data.results[0];
+      for(const r of data.results){
+        if((r.country_code || "").toUpperCase() === "US"){
+          // Open-Meteo uses admin1, admin2 naming; admin1 can be state name
+          // We can't always guarantee state code presence, so keep simple.
+          best = r;
+          break;
+        }
+      }
+      const name = [best.name, best.admin1, best.country].filter(Boolean).join(", ");
+      return { lat: best.latitude, lon: best.longitude, place: name };
+    }
+
+    function useGPS(){
+      return new Promise((resolve, reject)=>{
+        if(!navigator.geolocation){
+          reject(new Error("Geolocation not supported on this device/browser."));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos)=>{
+            resolve({
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              place: "Device location"
+            });
+          },
+          (err)=>{
+            reject(new Error(err.message || "Unable to get location."));
+          },
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+        );
+      });
+    }
+
+    // ---------- Calculation ----------
+    function calculate(){
+      setError("");
+
+      if(state.lat == null || state.lon == null){
+        setError("Set a location first (GPS or City/State).");
+        return;
+      }
+
+      const dateStr = $("dateInput").value;
+      if(!dateStr){
+        setError("Pick a date.");
+        return;
+      }
+      const [y,m,d] = dateStr.split("-").map(Number);
+      const dateLocal = new Date(y, m-1, d, 12, 0, 0); // midday local to avoid DST edge cases
+
+      const lat = state.lat, lon = state.lon;
+
+      // Sun times
+      const sun = SunCalc.getTimes(dateLocal, lat, lon);
+      const sunrise = sun.sunrise, sunset = sun.sunset;
+
+      // Moon times & illumination
+      const moonTimes = SunCalc.getMoonTimes(dateLocal, lat, lon);
+      const moonrise = moonTimes.rise || null;
+      const moonset  = moonTimes.set  || null;
+      const illum = SunCalc.getMoonIllumination(dateLocal); // {fraction, phase, angle}
+
+      // Moon extrema (overhead/underfoot)
+      const ex = findMoonExtrema(lat, lon, dateLocal);
+      const overhead = ex.overhead;
+      const underfoot = ex.underfoot;
+
+      const hasMoonriseSet = !!(moonrise || moonset);
+      const score = scoreFromInputs(illum.phase, hasMoonriseSet);
+      const b = bucket(score);
+
+      // UI
+      $("kpi").style.display = "flex";
+      $("scoreText").textContent = `${score}/100`;
+      $("scoreNote").textContent = `${b.label} conditions (moon-weighted).`;
+      $("phaseText").textContent = phaseLabel(illum.phase);
+      $("illumText").textContent = `Illumination: ${Math.round(illum.fraction*100)}%`;
+
+      $("sunText").textContent = `${fmtTime(sunrise)} sunrise • ${fmtTime(sunset)} sunset`;
+      $("moonText").textContent =
+        `Moon: ${moonrise ? fmtTime(moonrise)+" rise" : "— rise"} • ${moonset ? fmtTime(moonset)+" set" : "— set"}`;
+
+      const times = $("times");
+      times.innerHTML = "";
+
+      // Major: 2 hours window (120 min) around overhead & underfoot
+      const major1 = makeTimeItem("Major Period (Moon Overhead)", overhead, 120, "Major", b.cls);
+      const major2 = makeTimeItem("Major Period (Moon Underfoot)", underfoot, 120, "Major", b.cls);
+
+      // Minor: 1 hour window (60 min) around moonrise/set if available
+      const minorItems = [];
+      if(moonrise) minorItems.push(makeTimeItem("Minor Period (Moonrise)", moonrise, 60, "Minor", "okay"));
+      if(moonset)  minorItems.push(makeTimeItem("Minor Period (Moonset)",  moonset,  60, "Minor", "okay"));
+
+      times.appendChild(major1);
+      times.appendChild(major2);
+      minorItems.forEach(x => times.appendChild(x));
+
+      // If moon never rises/sets (can happen high latitudes), explain
+      if(!minorItems.length){
+        const div = document.createElement("div");
+        div.className = "timeItem warn";
+        div.innerHTML = `
+          <h3>Minor periods unavailable <span class="badge">Info</span></h3>
+          <div class="muted">For this date/location the library didn’t return moonrise/set times (can happen depending on latitude/season). Major periods still work.</div>
+        `;
+        times.appendChild(div);
+      }
+
+      // Add quick “golden hour-ish” note: 60 mins around sunrise/sunset
+      if(sunrise && sunset){
+        times.appendChild(makeTimeItem("Bonus: Sunrise Window", sunrise, 60, "Sun", "okay"));
+        times.appendChild(makeTimeItem("Bonus: Sunset Window",  sunset,  60, "Sun", "okay"));
+      }
+    }
+
+    function makeTimeItem(title, center, mins, tag, cls){
+      const div = document.createElement("div");
+      div.className = `timeItem ${cls || ""}`;
+      div.innerHTML = `
+        <h3>${title} <span class="badge">${tag}</span></h3>
+        <div style="font-size:16px; margin-bottom:4px;">${windowText(center, mins)}</div>
+        <div class="muted small">Center: ${fmtTime(center)} • Window: ±${mins} min</div>
+      `;
+      return div;
+    }
+
+    // ---------- Wire up ----------
+    function init(){
+      // timezone label
+      try{
+        $("tzText").textContent = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+      }catch{
+        $("tzText").textContent = "Local";
+      }
+
+      // default date = today (device local)
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth()+1).padStart(2,"0");
+      const dd = String(now.getDate()).padStart(2,"0");
+      $("dateInput").value = `${yyyy}-${mm}-${dd}`;
+
+      $("methodSelect").addEventListener("change", ()=>{
+        const v = $("methodSelect").value;
+        $("cityWrap").style.display = (v === "city") ? "block" : "none";
+        $("gpsBtn").style.display = (v === "gps") ? "inline-flex" : "none";
+        setError("");
+      });
+
+      $("gpsBtn").addEventListener("click", async ()=>{
+        setError("");
+        $("gpsBtn").textContent = "Getting location…";
+        try{
+          const loc = await useGPS();
+          state.lat = loc.lat;
+          state.lon = loc.lon;
+          state.place = loc.place;
+          setLocationText(`${state.place} (${state.lat.toFixed(4)}, ${state.lon.toFixed(4)})`);
+        }catch(e){
+          setError(`GPS error: ${e.message}`);
+        }finally{
+          $("gpsBtn").textContent = "Use my location";
+        }
+      });
+
+      $("lookupBtn").addEventListener("click", async ()=>{
+        setError("");
+        const city = ($("cityInput").value || "").trim();
+        const st = ($("stateInput").value || "").trim().toUpperCase();
+
+        if(!city || !st){
+          setError("Enter both City and State (2-letter). Example: Coeur d'Alene, ID");
+          return;
+        }
+
+        $("lookupBtn").textContent = "Finding…";
+        try{
+          const loc = await geocodeCityState(city, st);
+          state.lat = loc.lat;
+          state.lon = loc.lon;
+          state.place = loc.place;
+          setLocationText(`${state.place} (${state.lat.toFixed(4)}, ${state.lon.toFixed(4)})`);
+        }catch(e){
+          setError(`Lookup error: ${e.message}`);
+        }finally{
+          $("lookupBtn").textContent = "Find";
+        }
+      });
+
+      $("calcBtn").addEventListener("click", calculate);
+
+      $("clearBtn").addEventListener("click", ()=>{
+        state = {lat:null, lon:null, place:null};
+        setLocationText("Not set");
+        setError("");
+        $("kpi").style.display = "none";
+        $("times").innerHTML = "";
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
