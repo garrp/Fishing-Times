@@ -6,7 +6,8 @@ from datetime import datetime, date, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-APP_TITLE = "FishyNW Fishing Times"
+APP_VERSION = "1.0"
+APP_TITLE = f"FishyNW Fishing Times v{APP_VERSION}"
 LOGO_FILENAME = "FishyNW-logo.png"
 
 
@@ -135,7 +136,6 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
     Returns a list of windows: (label, start_dt, end_dt, weight)
     weight is a rough "goodness" score (for graph shading)
     """
-    # Base windows (general)
     dawn_start = sunrise - timedelta(hours=1)
     dawn_end = sunrise + timedelta(hours=1, minutes=30)
 
@@ -153,7 +153,6 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
 
     s = (species or "").strip().lower()
 
-    # Species bias (simple rules, consistent and predictable)
     if s in ["kokanee", "rainbow trout", "chinook", "lake trout", "trout"]:
         windows = [
             ("Early (best)", dawn_start, dawn_end, 0.90),
@@ -162,7 +161,7 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
         ]
     elif s in ["walleye"]:
         windows = [
-            ("Early", dawn_start, dawn_end, 0.75),
+            ("Early", dawn_start, dawn_end, 0.70),
             ("Midday", midday_start, midday_end, 0.35),
             ("Evening (best)", dusk_start, dusk_end, 0.90),
         ]
@@ -179,7 +178,6 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
             ("Evening (best)", dusk_start, dusk_end, 0.90),
         ]
 
-    # Ensure all window datetimes match the target day (timezone oddities)
     fixed = []
     for label, start_dt, end_dt, weight in windows:
         if start_dt.date() != target_day:
@@ -205,21 +203,15 @@ def wind_every_n_hours(times, speeds, dirs, target_day: date, step_hours: int):
 
 
 def make_fishing_graph(target_day: date, windows):
-    """
-    Simple time-axis graph with shaded "good" windows.
-    Returns PNG buffer.
-    """
     start = datetime(target_day.year, target_day.month, target_day.day, 0, 0, 0)
     end = start + timedelta(days=1)
 
     fig = plt.figure(figsize=(10, 2.6), dpi=160)
     ax = fig.add_subplot(111)
 
-    # Baseline
     ax.plot([start, end], [0, 0])
 
-    # Shaded windows based on weight (no manual colors)
-    for label, s_dt, e_dt, weight in windows:
+    for _, s_dt, e_dt, weight in windows:
         ax.axvspan(s_dt, e_dt, alpha=max(0.08, min(0.35, weight * 0.35)))
 
     ax.set_ylim(-1, 1)
@@ -242,12 +234,12 @@ def species_note(species: str):
     if s in ["kokanee", "rainbow trout", "chinook", "lake trout", "trout"]:
         return "Trolling usually lines up best with dawn and dusk. Keep passes clean when wind shifts."
     if s in ["walleye"]:
-        return "Low light is your friend. Focus dusk when possible."
+        return "Low light is your friend. Focus the evening window and nearby low-light periods."
     if s in ["smallmouth bass", "largemouth bass", "bass"]:
         return "Early and late are strongest. Wind can help by pushing bait onto banks and points."
     if s in ["catfish", "channel catfish", "bullhead"]:
         return "Evening is typically strongest. Wind matters less than bait placement and scent trail."
-    return "Use the shaded windows as a simple starting point. Adjust based on wind, structure, and marks."
+    return "Use the shaded windows as a starting point. Adjust based on wind, structure, and marks."
 
 
 # -----------------------------
@@ -255,46 +247,44 @@ def species_note(species: str):
 # -----------------------------
 st.set_page_config(page_title=APP_TITLE, layout="centered")
 
+# Header
 logo = safe_read_logo(LOGO_FILENAME)
 if logo:
     st.image(logo, use_container_width=True)
 
 st.title(APP_TITLE)
-st.caption("One day only. Best fishing times on a graph. Wind listed every 2 hours for the chosen day.")
+st.caption("Version 1.0 • One day only • Best fishing times graph • Wind listed every 2 hours")
 
-with st.form("inputs"):
+# Sidebar inputs (v1.0 layout polish)
+with st.sidebar:
     st.subheader("Inputs")
-    c1, c2 = st.columns(2)
-    with c1:
-        city = st.text_input("City / place name", "Coeur d'Alene, ID")
-        manual = st.checkbox("Use manual lat/lon")
-    with c2:
-        target_date = st.date_input("Day", date.today())
-        species = st.selectbox(
-            "Species",
-            [
-                "Kokanee",
-                "Rainbow trout",
-                "Walleye",
-                "Smallmouth bass",
-                "Largemouth bass",
-                "Chinook",
-                "Lake trout",
-                "Catfish",
-                "Other",
-            ],
-            index=0,
-        )
+
+    city = st.text_input("City / place name", "Coeur d'Alene, ID")
+    manual = st.checkbox("Use manual lat/lon")
+    target_date = st.date_input("Day", date.today())
+
+    species = st.selectbox(
+        "Species",
+        [
+            "Kokanee",
+            "Rainbow trout",
+            "Walleye",
+            "Smallmouth bass",
+            "Largemouth bass",
+            "Chinook",
+            "Lake trout",
+            "Catfish",
+            "Other",
+        ],
+        index=0,
+    )
 
     lat = lon = None
     if manual:
-        c3, c4 = st.columns(2)
-        with c3:
-            lat = st.number_input("Latitude", value=47.6777, format="%.6f")
-        with c4:
-            lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
+        lat = st.number_input("Latitude", value=47.6777, format="%.6f")
+        lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
 
-    submitted = st.form_submit_button("Get fishing outlook", use_container_width=True)
+    submitted = st.button("Get fishing outlook", use_container_width=True)
 
 if not submitted:
     st.stop()
@@ -320,11 +310,10 @@ if wx is None:
     using_fallback = True
     st.info(
         "Live weather temporarily unavailable or rate-limited. "
-        "Showing estimated fishing windows and a calm-wind fallback."
+        "Showing estimated fishing windows and calm-wind fallback."
     )
 
 if using_fallback:
-    # Calm-wind fallback (keeps app useful)
     times = [
         datetime(target_date.year, target_date.month, target_date.day, h, 0).isoformat()
         for h in range(0, 24)
@@ -332,7 +321,6 @@ if using_fallback:
     speeds = [3.0] * 24  # mph
     dirs = [180.0] * 24  # degrees (S)
 
-    # Basic sunrise/sunset fallback if API is unavailable
     sunrise = datetime(target_date.year, target_date.month, target_date.day, 6, 30)
     sunset = datetime(target_date.year, target_date.month, target_date.day, 17, 0)
 else:
@@ -353,12 +341,11 @@ if not times or not speeds or not dirs:
     st.warning("No wind data available for this location/date.")
     st.stop()
 
-# Best fishing windows based on sunrise/sunset + species
+# Best fishing windows
 st.markdown("### Best Fishing Times (graph)")
 if sunrise and sunset:
     windows = compute_fishing_windows(sunrise, sunset, target_date, species)
 else:
-    # Fallback if sunrise/sunset missing (rare)
     start = datetime(target_date.year, target_date.month, target_date.day, 6, 0, 0)
     mid = datetime(target_date.year, target_date.month, target_date.day, 12, 0, 0)
     eve = datetime(target_date.year, target_date.month, target_date.day, 18, 0, 0)
@@ -371,9 +358,8 @@ else:
 graph_buf = make_fishing_graph(target_date, windows)
 st.image(graph_buf, use_container_width=True)
 
-# Also list the windows as bullets
 st.markdown("### Best Windows (list)")
-for label, s_dt, e_dt, weight in windows:
+for label, s_dt, e_dt, _ in windows:
     st.write(f"• {label}: {s_dt.strftime('%-I:%M %p')} - {e_dt.strftime('%-I:%M %p')}")
 
 st.markdown("### Species Note")
@@ -391,4 +377,4 @@ else:
     for t, mph, dtxt in wind2:
         st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({dtxt})")
 
-st.caption("FishyNW • one-day • best times graph • wind every 2 hours")
+st.caption(f"FishyNW • v{APP_VERSION} • one-day • best times graph • wind every 2 hours")
