@@ -3,8 +3,7 @@ from datetime import datetime, date, timedelta
 import pytz
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 
 from astral import LocationInfo
 from astral.sun import sun
@@ -16,17 +15,15 @@ import ephem
 # ----------------------------
 st.set_page_config(
     page_title="FishyNW Fishing Times",
-    page_icon="🎣",
     layout="wide",
 )
 
 # ----------------------------
 # Styling
 # ----------------------------
-st.markdown(
-    """
+st.markdown("""
 <style>
-.block-container { max-width: 1050px; padding-top: 1.2rem; padding-bottom: 2.0rem; }
+.block-container { max-width: 1000px; padding-top: 1.2rem; }
 .fishynw-card {
   background: rgba(17,26,46,.55);
   border-radius: 18px;
@@ -34,115 +31,67 @@ st.markdown(
   border: 1px solid rgba(255,255,255,.10);
 }
 .muted { color: rgba(235,240,255,.70); }
-.small { font-size:12px; }
-.footer { margin-top: 26px; text-align:center; font-size:12px; color:#9fb2d9; }
+.footer {
+  margin-top: 26px;
+  text-align:center;
+  font-size:12px;
+  color:#9fb2d9;
+}
 .footer a { color:#6fd3ff; text-decoration:none; }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # ----------------------------
 # Helpers
 # ----------------------------
-def clamp(x: float, a: float, b: float) -> float:
+def clamp(x, a, b):
     return max(a, min(b, x))
 
-def gaussian(x: float, mu: float, sigma: float) -> float:
+def gaussian(x, mu, sigma):
     return math.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
-def minutes_since_midnight(dt: datetime, tz: pytz.BaseTzInfo) -> int:
+def minutes_since_midnight(dt, tz):
     local = dt.astimezone(tz)
     return local.hour * 60 + local.minute
 
-def to_datetime_local_naive(d: date, minute: int) -> datetime:
-    # Plotly is happy with naive local datetimes
-    return datetime(d.year, d.month, d.day, minute // 60, minute % 60)
-
-def deg_to_compass(deg: float) -> str:
+def deg_to_compass(deg):
     dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
     ix = int((deg / 22.5) + 0.5) % 16
     return dirs[ix]
 
 # ----------------------------
-# Browser location component
-# ----------------------------
-def geolocation_component(height: int = 0):
-    html = """
-    <script>
-      const send = (lat, lon) => {
-        const url = new URL(window.parent.location);
-        url.searchParams.set("lat", lat);
-        url.searchParams.set("lon", lon);
-        url.searchParams.delete("geo_error");
-        window.parent.history.replaceState({}, "", url.toString());
-      };
-
-      const err = (msg) => {
-        const url = new URL(window.parent.location);
-        url.searchParams.set("geo_error", msg);
-        window.parent.history.replaceState({}, "", url.toString());
-      };
-
-      if (!navigator.geolocation) {
-        err("Geolocation not supported in this browser.");
-      } else {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => send(pos.coords.latitude, pos.coords.longitude),
-          (e) => err(e.message || "Unable to get location."),
-          { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
-        );
-      }
-    </script>
-    """
-    components.html(html, height=height)
-
-# ----------------------------
 # Geocoding (Open-Meteo)
 # ----------------------------
-def geocode_city_state(city: str, state: str):
-    if not city.strip() or not state.strip():
-        raise ValueError("Enter City and State.")
-
+def geocode_city_state(city, state):
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    r = requests.get(
-        url,
-        params={"name": city.strip(), "count": 25, "language": "en", "format": "json"},
-        timeout=12,
-    )
+    r = requests.get(url, params={"name": city, "count": 20}, timeout=10)
     r.raise_for_status()
-    results = r.json().get("results") or []
+    results = r.json().get("results", [])
+
     if not results:
-        raise ValueError("City not found.")
+        raise ValueError("City not found")
 
-    state_u = state.strip().upper()
-    us = [x for x in results if (x.get("country_code") or "").upper() == "US"]
-    if not us:
-        raise ValueError("No US matches found.")
+    for r in results:
+        if r.get("country_code") == "US" and state.upper() in (r.get("admin1","").upper()):
+            return r["latitude"], r["longitude"], f"{r['name']}, {r['admin1']}"
 
-    # Prefer state match
-    for x in us:
-        admin1 = (x.get("admin1") or "").upper()
-        if state_u in admin1:
-            return float(x["latitude"]), float(x["longitude"]), f"{x['name']}, {x.get('admin1','')}"
-    x = us[0]
-    return float(x["latitude"]), float(x["longitude"]), f"{x['name']}, {x.get('admin1','')}"
+    r = results[0]
+    return r["latitude"], r["longitude"], r["name"]
 
 # ----------------------------
-# Sun/Moon events
+# Sun & Moon events
 # ----------------------------
-def get_events(day: date, lat: float, lon: float, tz: pytz.BaseTzInfo):
+def get_events(day, lat, lon, tz):
     loc = LocationInfo("", "", tz.zone, lat, lon)
     s = sun(loc.observer, date=day, tzinfo=tz)
 
     obs = ephem.Observer()
     obs.lat, obs.lon = str(lat), str(lon)
-
-    local_midnight = tz.localize(datetime(day.year, day.month, day.day, 0, 0, 0))
-    obs.date = local_midnight.astimezone(pytz.utc)
+    obs.date = tz.localize(datetime(day.year, day.month, day.day)).astimezone(pytz.utc)
 
     moon = ephem.Moon()
     moonrise = moonset = None
+
     try:
         moonrise = ephem.Date(obs.next_rising(moon)).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
     except:
@@ -152,251 +101,131 @@ def get_events(day: date, lat: float, lon: float, tz: pytz.BaseTzInfo):
     except:
         pass
 
-    # overhead/underfoot by sampling every 5 minutes
-    best_hi_alt = -999.0
-    best_lo_alt = 999.0
-    best_hi_time = None
-    best_lo_time = None
-
-    t = tz.localize(datetime(day.year, day.month, day.day, 0, 0, 0))
-    for _ in range(288):  # 24h * 60 / 5
+    best_hi = (-999, None)
+    best_lo = (999, None)
+    t = tz.localize(datetime(day.year, day.month, day.day))
+    for _ in range(288):
         obs.date = t.astimezone(pytz.utc)
         moon.compute(obs)
         alt = float(moon.alt)
-        if alt > best_hi_alt:
-            best_hi_alt = alt
-            best_hi_time = t
-        if alt < best_lo_alt:
-            best_lo_alt = alt
-            best_lo_time = t
+        if alt > best_hi[0]:
+            best_hi = (alt, t)
+        if alt < best_lo[0]:
+            best_lo = (alt, t)
         t += timedelta(minutes=5)
 
     return {
-        "sunrise": s.get("sunrise"),
-        "sunset": s.get("sunset"),
+        "sunrise": s["sunrise"],
+        "sunset": s["sunset"],
         "moonrise": moonrise,
         "moonset": moonset,
-        "overhead": best_hi_time,
-        "underfoot": best_lo_time,
+        "overhead": best_hi[1],
+        "underfoot": best_lo[1],
     }
 
 # ----------------------------
-# Wind (Open-Meteo Forecast API)
+# Bite curve
 # ----------------------------
-def fetch_wind_for_day(day: date, lat: float, lon: float, tz_name: str):
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "hourly": "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
-        "timezone": tz_name,
-        "start_date": day.isoformat(),
-        "end_date": day.isoformat(),
-        "wind_speed_unit": "mph",
-    }
-    r = requests.get(url, params=params, timeout=12)
-    r.raise_for_status()
-    data = r.json()
-
-    hourly = data.get("hourly") or {}
-    times = hourly.get("time") or []
-    ws = hourly.get("wind_speed_10m") or []
-    wd = hourly.get("wind_direction_10m") or []
-    wg = hourly.get("wind_gusts_10m") or []
-
-    out = {}
-    for t_str, s_mph, d_deg, g_mph in zip(times, ws, wd, wg):
-        hh = int(t_str.split("T")[1].split(":")[0])
-        out[hh] = {"speed_mph": float(s_mph), "gust_mph": float(g_mph), "dir_deg": float(d_deg)}
-    return out
-
-def wind_bullets_every_2h(wind_by_hour: dict):
-    bullets = []
-    for hh in range(0, 24, 2):
-        w = wind_by_hour.get(hh)
-        if not w:
-            continue
-        hour_dt = datetime(2000, 1, 1, hh, 0, 0)  # formatting only
-        hour_str = hour_dt.strftime("%-I %p")
-        direction = deg_to_compass(w["dir_deg"])
-        bullets.append(
-            f"**{hour_str}**: {int(round(w['speed_mph']))} mph {direction}, gust {int(round(w['gust_mph']))} mph"
-        )
-    return bullets
-
-# ----------------------------
-# Bite curve (per-minute)
-# ----------------------------
-def build_bite_curve(day: date, tz: pytz.BaseTzInfo, events: dict):
+def build_bite_curve(day, tz, events):
     centers = []
     weights = []
-    sigmas = []
 
-    def add(dt, w, sigma):
+    def add(dt, w):
         if dt:
             centers.append(minutes_since_midnight(dt, tz))
             weights.append(w)
-            sigmas.append(sigma)
 
-    # Major
-    add(events.get("overhead"), 1.00, 95)
-    add(events.get("underfoot"), 1.00, 95)
-    # Minor
-    add(events.get("moonrise"), 0.65, 55)
-    add(events.get("moonset"), 0.65, 55)
-    # Sun bonus
-    add(events.get("sunrise"), 0.55, 50)
-    add(events.get("sunset"), 0.55, 50)
+    add(events["overhead"], 1.0)
+    add(events["underfoot"], 1.0)
+    add(events["moonrise"], 0.6)
+    add(events["moonset"], 0.6)
+    add(events["sunrise"], 0.5)
+    add(events["sunset"], 0.5)
 
     x = []
     y = []
+
     for m in range(1440):
-        val = 25.0
-        for c, w, sig in zip(centers, weights, sigmas):
-            dmin = min(abs(m - c), 1440 - abs(m - c))
-            val += w * 60.0 * gaussian(dmin, 0.0, sig)
-        x.append(to_datetime_local_naive(day, m))
+        val = 25
+        for c, w in zip(centers, weights):
+            d = min(abs(m - c), 1440 - abs(m - c))
+            val += w * 60 * gaussian(d, 0, 90)
+        x.append(m / 60)
         y.append(clamp(val, 0, 100))
+
     return x, y
 
-
 # ----------------------------
-# State
+# Wind (every 2 hours)
 # ----------------------------
-if "lat" not in st.session_state:
-    st.session_state.lat = None
-if "lon" not in st.session_state:
-    st.session_state.lon = None
-if "place" not in st.session_state:
-    st.session_state.place = None
+def fetch_wind(day, lat, lon, tz_name):
+    url = "https://api.open-meteo.com/v1/forecast"
+    r = requests.get(url, params={
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+        "start_date": day.isoformat(),
+        "end_date": day.isoformat(),
+        "wind_speed_unit": "mph",
+        "timezone": tz_name,
+    }, timeout=10)
+    r.raise_for_status()
+    data = r.json()["hourly"]
 
-tz = pytz.timezone("America/Los_Angeles")
-tz_name = tz.zone
-
-# Capture query params from device location
-qp = st.query_params
-geo_error = qp.get("geo_error", None)
-q_lat = qp.get("lat", None)
-q_lon = qp.get("lon", None)
-
-if geo_error:
-    st.error(f"Location error: {geo_error}")
-
-if q_lat and q_lon:
-    try:
-        st.session_state.lat = float(q_lat)
-        st.session_state.lon = float(q_lon)
-        st.session_state.place = "Device location"
-    except:
-        pass
+    bullets = []
+    for i, t in enumerate(data["time"]):
+        hour = int(t.split("T")[1][:2])
+        if hour % 2 == 0:
+            direction = deg_to_compass(data["wind_direction_10m"][i])
+            bullets.append(
+                f"**{hour % 12 or 12} {'AM' if hour < 12 else 'PM'}**: "
+                f"{int(data['wind_speed_10m'][i])} mph {direction}, "
+                f"gust {int(data['wind_gusts_10m'][i])} mph"
+            )
+    return bullets
 
 # ----------------------------
 # UI
 # ----------------------------
-st.markdown(
-    """
-<div class="fishynw-card">
-  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-    <div style="font-size:28px;">🎣</div>
-    <div>
-      <div style="font-size:20px; font-weight:700;">FishyNW Fishing Times</div>
-      <div class="muted" style="font-size:13px;">One-day bite index graph + wind bullets</div>
-    </div>
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-st.write("")
 st.markdown('<div class="fishynw-card">', unsafe_allow_html=True)
+st.image("FishyNW-logo.png", width=220)
+st.markdown("<h2>Fishing Times</h2>", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
+tz = pytz.timezone("America/Los_Angeles")
 day = st.date_input("Date", value=datetime.now(tz).date())
+city = st.text_input("City", "Coeur d'Alene")
+state = st.text_input("State", "ID")
 
-method = st.selectbox("Location method", ["Device location", "City + State"])
+if st.button("Generate"):
+    lat, lon, place = geocode_city_state(city, state)
 
-if method == "Device location":
-    if st.button("Get location", type="primary"):
-        geolocation_component()
-else:
-    city = st.text_input("City", "Coeur d'Alene")
-    state = st.text_input("State", "ID")
-    if st.button("Find city", type="secondary"):
-        try:
-            lat, lon, place = geocode_city_state(city, state)
-            st.session_state.lat = lat
-            st.session_state.lon = lon
-            st.session_state.place = place
-            st.success(f"Found: {place}")
-        except Exception as e:
-            st.error(str(e))
+    events = get_events(day, lat, lon, tz)
+    x, y = build_bite_curve(day, tz, events)
 
-loc_text = "Not set"
-if st.session_state.lat is not None and st.session_state.lon is not None:
-    loc_text = f"{st.session_state.place} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
-st.markdown(f'<div class="muted small">Location: {loc_text}</div>', unsafe_allow_html=True)
+    # Static graph
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(x, y, linewidth=2)
+    ax.set_xlim(0, 24)
+    ax.set_ylim(0, 100)
+    ax.set_xlabel("Time of Day")
+    ax.set_ylabel("Bite Index")
+    ax.set_title(f"Bite Index • {place}")
+    ax.set_xticks(range(0, 25, 2))
+    ax.grid(alpha=0.3)
 
-go_btn = st.button("Generate", type="primary")
+    st.pyplot(fig)
 
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ----------------------------
-# Output
-# ----------------------------
-if go_btn:
-    if st.session_state.lat is None or st.session_state.lon is None:
-        st.error("Set a location first.")
-    else:
-        try:
-            lat = float(st.session_state.lat)
-            lon = float(st.session_state.lon)
-            place = st.session_state.place or "Location"
-
-            events = get_events(day, lat, lon, tz)
-            x, bite = build_bite_curve(day, tz, events)
-
-            wind_by_hour = fetch_wind_for_day(day, lat, lon, tz_name)
-            bullets = wind_bullets_every_2h(wind_by_hour)
-
-            # Bite graph only
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=x,
-                y=bite,
-                mode="lines",
-                name="Bite Index",
-                hovertemplate="%{x|%I:%M %p}<br>Bite: %{y:.0f}<extra></extra>",
-            ))
-            fig.update_layout(
-                title=f"Bite Index • {place}",
-                height=480,
-                margin=dict(l=10, r=10, t=45, b=10),
-                hovermode="x unified",
-                showlegend=False,
-                yaxis=dict(title="Bite Index (0–100)", range=[0, 100]),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Wind bullets (every 2 hours)
-            st.markdown("**Wind (every 2 hours):**")
-            if bullets:
-                for line in bullets:
-                    st.markdown(f"- {line}")
-            else:
-                st.write("No wind data available for that day.")
-
-        except Exception as e:
-            st.error(str(e))
+    # Wind bullets
+    st.markdown("### Wind (every 2 hours)")
+    for line in fetch_wind(day, lat, lon, tz.zone):
+        st.markdown(f"- {line}")
 
 # ----------------------------
 # Footer
 # ----------------------------
-st.markdown(
-    """
+st.markdown("""
 <div class="footer">
-  🎣 <b>FishyNW</b> • <a href="https://fishynw.com" target="_blank" rel="noopener">fishynw.com</a><br>
-  Pacific Northwest Fishing • #adventure
+  <b>FishyNW</b> • <a href="https://fishynw.com" target="_blank">fishynw.com</a>
 </div>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
