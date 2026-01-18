@@ -3,6 +3,7 @@ from datetime import datetime, date, timedelta
 import pytz
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 
 from astral import LocationInfo
@@ -33,9 +34,9 @@ st.markdown(
   border: 1px solid rgba(255,255,255,.10);
 }
 .muted { color: rgba(235,240,255,.70); }
+.small { font-size:12px; }
 .footer { margin-top: 26px; text-align:center; font-size:12px; color:#9fb2d9; }
 .footer a { color:#6fd3ff; text-decoration:none; }
-.small { font-size:12px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -58,8 +59,43 @@ def to_datetime_local_naive(d: date, minute: int) -> datetime:
     # Plotly is happy with naive local datetimes
     return datetime(d.year, d.month, d.day, minute // 60, minute % 60)
 
-def mph_from_kmh(kmh: float) -> float:
-    return kmh * 0.621371
+def deg_to_compass(deg: float) -> str:
+    dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
+    ix = int((deg / 22.5) + 0.5) % 16
+    return dirs[ix]
+
+# ----------------------------
+# Browser location component
+# ----------------------------
+def geolocation_component(height: int = 0):
+    html = """
+    <script>
+      const send = (lat, lon) => {
+        const url = new URL(window.parent.location);
+        url.searchParams.set("lat", lat);
+        url.searchParams.set("lon", lon);
+        url.searchParams.delete("geo_error");
+        window.parent.history.replaceState({}, "", url.toString());
+      };
+
+      const err = (msg) => {
+        const url = new URL(window.parent.location);
+        url.searchParams.set("geo_error", msg);
+        window.parent.history.replaceState({}, "", url.toString());
+      };
+
+      if (!navigator.geolocation) {
+        err("Geolocation not supported in this browser.");
+      } else {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => send(pos.coords.latitude, pos.coords.longitude),
+          (e) => err(e.message || "Unable to get location."),
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+        );
+      }
+    </script>
+    """
+    components.html(html, height=height)
 
 # ----------------------------
 # Geocoding (Open-Meteo)
@@ -147,21 +183,16 @@ def get_events(day: date, lat: float, lon: float, tz: pytz.BaseTzInfo):
 # ----------------------------
 # Wind (Open-Meteo Forecast API)
 # ----------------------------
-def fetch_wind_for_day(day: date, lat: float, lon: float, tz: str):
-    """
-    Returns dict keyed by local hour (0..23):
-      { hour: {"speed_mph":..., "gust_mph":..., "dir_deg":...}, ... }
-    Uses Open-Meteo hourly wind_speed_10m / wind_direction_10m / wind_gusts_10m. 3
-    """
+def fetch_wind_for_day(day: date, lat: float, lon: float, tz_name: str):
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
         "longitude": lon,
         "hourly": "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
-        "timezone": tz,
+        "timezone": tz_name,
         "start_date": day.isoformat(),
         "end_date": day.isoformat(),
-        "wind_speed_unit": "mph",  # Open-Meteo supports unit selection in docs 4
+        "wind_speed_unit": "mph",
     }
     r = requests.get(url, params=params, timeout=12)
     r.raise_for_status()
@@ -175,10 +206,23 @@ def fetch_wind_for_day(day: date, lat: float, lon: float, tz: str):
 
     out = {}
     for t_str, s_mph, d_deg, g_mph in zip(times, ws, wd, wg):
-        # time format: "YYYY-MM-DDTHH:MM"
         hh = int(t_str.split("T")[1].split(":")[0])
         out[hh] = {"speed_mph": float(s_mph), "gust_mph": float(g_mph), "dir_deg": float(d_deg)}
     return out
+
+def wind_bullets_every_2h(wind_by_hour: dict):
+    bullets = []
+    for hh in range(0, 24, 2):
+        w = wind_by_hour.get(hh)
+        if not w:
+            continue
+        hour_dt = datetime(2000, 1, 1, hh, 0, 0)  # formatting only
+        hour_str = hour_dt.strftime("%-I %p")
+        direction = deg_to_compass(w["dir_deg"])
+        bullets.append(
+            f"**{hour_str}**: {int(round(w['speed_mph']))} mph {direction}, gust {int(round(w['gust_mph']))} mph"
+        )
+    return bullets
 
 # ----------------------------
 # Bite curve (per-minute)
@@ -215,27 +259,36 @@ def build_bite_curve(day: date, tz: pytz.BaseTzInfo, events: dict):
         y.append(clamp(val, 0, 100))
     return x, y
 
-# ----------------------------
-# Wind penalty (simple + transparent)
-# ----------------------------
-def apply_wind_penalty(bite: float, wind_mph: float, gust_mph: float) -> float:
-    """
-    Simple rule:
-      - light wind 0–6 mph: no penalty
-      - 7–15 mph: mild penalty
-      - 16+ mph: bigger penalty
-      - gusts add extra penalty
-    """
-    penalty = 0.0
-    if wind_mph > 6:
-        penalty += (wind_mph - 6) * 1.1
-    if wind_mph > 15:
-        penalty += (wind_mph - 15) * 0.9
-    if gust_mph > wind_mph + 8:
-        penalty += (gust_mph - (wind_mph + 8)) * 0.8
 
-    return clamp(bite - penalty, 0, 100)
+# ----------------------------
+# State
+# ----------------------------
+if "lat" not in st.session_state:
+    st.session_state.lat = None
+if "lon" not in st.session_state:
+    st.session_state.lon = None
+if "place" not in st.session_state:
+    st.session_state.place = None
 
+tz = pytz.timezone("America/Los_Angeles")
+tz_name = tz.zone
+
+# Capture query params from device location
+qp = st.query_params
+geo_error = qp.get("geo_error", None)
+q_lat = qp.get("lat", None)
+q_lon = qp.get("lon", None)
+
+if geo_error:
+    st.error(f"Location error: {geo_error}")
+
+if q_lat and q_lon:
+    try:
+        st.session_state.lat = float(q_lat)
+        st.session_state.lon = float(q_lon)
+        st.session_state.place = "Device location"
+    except:
+        pass
 
 # ----------------------------
 # UI
@@ -247,7 +300,7 @@ st.markdown(
     <div style="font-size:28px;">🎣</div>
     <div>
       <div style="font-size:20px; font-weight:700;">FishyNW Fishing Times</div>
-      <div class="muted" style="font-size:13px;">One-day bite index with wind overlay</div>
+      <div class="muted" style="font-size:13px;">One-day bite index graph + wind bullets</div>
     </div>
   </div>
 </div>
@@ -255,19 +308,35 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tz = pytz.timezone("America/Los_Angeles")
-tz_name = tz.zone
-
 st.write("")
 st.markdown('<div class="fishynw-card">', unsafe_allow_html=True)
 
 day = st.date_input("Date", value=datetime.now(tz).date())
-city = st.text_input("City", "Coeur d'Alene")
-state = st.text_input("State", "ID")
 
-use_wind_penalty = st.toggle("Adjust bite index using wind", value=True)
+method = st.selectbox("Location method", ["Device location", "City + State"])
 
-go_btn = st.button("Generate graph", type="primary")
+if method == "Device location":
+    if st.button("Get location", type="primary"):
+        geolocation_component()
+else:
+    city = st.text_input("City", "Coeur d'Alene")
+    state = st.text_input("State", "ID")
+    if st.button("Find city", type="secondary"):
+        try:
+            lat, lon, place = geocode_city_state(city, state)
+            st.session_state.lat = lat
+            st.session_state.lon = lon
+            st.session_state.place = place
+            st.success(f"Found: {place}")
+        except Exception as e:
+            st.error(str(e))
+
+loc_text = "Not set"
+if st.session_state.lat is not None and st.session_state.lon is not None:
+    loc_text = f"{st.session_state.place} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+st.markdown(f'<div class="muted small">Location: {loc_text}</div>', unsafe_allow_html=True)
+
+go_btn = st.button("Generate", type="primary")
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -275,95 +344,49 @@ st.markdown("</div>", unsafe_allow_html=True)
 # Output
 # ----------------------------
 if go_btn:
-    try:
-        lat, lon, place = geocode_city_state(city, state)
+    if st.session_state.lat is None or st.session_state.lon is None:
+        st.error("Set a location first.")
+    else:
+        try:
+            lat = float(st.session_state.lat)
+            lon = float(st.session_state.lon)
+            place = st.session_state.place or "Location"
 
-        events = get_events(day, lat, lon, tz)
-        x, bite = build_bite_curve(day, tz, events)
+            events = get_events(day, lat, lon, tz)
+            x, bite = build_bite_curve(day, tz, events)
 
-        wind_by_hour = fetch_wind_for_day(day, lat, lon, tz_name)
+            wind_by_hour = fetch_wind_for_day(day, lat, lon, tz_name)
+            bullets = wind_bullets_every_2h(wind_by_hour)
 
-        # Build per-minute wind speed series by holding each hour's value
-        wind_x = []
-        wind_speed = []
-        wind_gust = []
+            # Bite graph only
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=bite,
+                mode="lines",
+                name="Bite Index",
+                hovertemplate="%{x|%I:%M %p}<br>Bite: %{y:.0f}<extra></extra>",
+            ))
+            fig.update_layout(
+                title=f"Bite Index • {place}",
+                height=480,
+                margin=dict(l=10, r=10, t=45, b=10),
+                hovermode="x unified",
+                showlegend=False,
+                yaxis=dict(title="Bite Index (0–100)", range=[0, 100]),
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-        for m in range(1440):
-            dt = x[m]
-            hh = dt.hour
-            w = wind_by_hour.get(hh)
-            if w:
-                wind_speed.append(float(w["speed_mph"]))
-                wind_gust.append(float(w["gust_mph"]))
+            # Wind bullets (every 2 hours)
+            st.markdown("**Wind (every 2 hours):**")
+            if bullets:
+                for line in bullets:
+                    st.markdown(f"- {line}")
             else:
-                wind_speed.append(None)
-                wind_gust.append(None)
-            wind_x.append(dt)
+                st.write("No wind data available for that day.")
 
-        bite_adj = bite[:]
-        if use_wind_penalty:
-            tmp = []
-            for m in range(1440):
-                ws = wind_speed[m]
-                wg = wind_gust[m]
-                if ws is None or wg is None:
-                    tmp.append(bite[m])
-                else:
-                    tmp.append(apply_wind_penalty(bite[m], ws, wg))
-            bite_adj = tmp
-
-        fig = go.Figure()
-
-        # Bite index line
-        fig.add_trace(go.Scatter(
-            x=x,
-            y=bite_adj,
-            mode="lines",
-            name="Bite Index",
-            hovertemplate="%{x|%I:%M %p}<br>Bite: %{y:.0f}<extra></extra>",
-        ))
-
-        # Wind speed on secondary axis
-        fig.add_trace(go.Scatter(
-            x=wind_x,
-            y=wind_speed,
-            mode="lines",
-            name="Wind Speed (mph)",
-            yaxis="y2",
-            hovertemplate="%{x|%I:%M %p}<br>Wind: %{y:.0f} mph<extra></extra>",
-        ))
-
-        # Gusts (optional, faint)
-        fig.add_trace(go.Scatter(
-            x=wind_x,
-            y=wind_gust,
-            mode="lines",
-            name="Gusts (mph)",
-            yaxis="y2",
-            hovertemplate="%{x|%I:%M %p}<br>Gust: %{y:.0f} mph<extra></extra>",
-            opacity=0.35,
-        ))
-
-        fig.update_layout(
-            title=f"Bite Index • {place}",
-            height=480,
-            margin=dict(l=10, r=10, t=45, b=10),
-            hovermode="x unified",
-            showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            yaxis=dict(title="Bite Index (0–100)", range=[0, 100]),
-            yaxis2=dict(title="Wind (mph)", overlaying="y", side="right"),
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown(
-            f'<div class="muted small">Wind data: Open-Meteo hourly wind_speed_10m / wind_direction_10m / wind_gusts_10m.</div>',
-            unsafe_allow_html=True
-        )
-
-    except Exception as e:
-        st.error(str(e))
+        except Exception as e:
+            st.error(str(e))
 
 # ----------------------------
 # Footer
