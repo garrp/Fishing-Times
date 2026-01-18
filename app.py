@@ -154,42 +154,32 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
     s = (species or "").strip().lower()
 
     # Species bias (simple rules, consistent and predictable)
-    # You can refine these later with more detailed logic.
     if s in ["kokanee", "rainbow trout", "chinook", "lake trout", "trout"]:
-        # Salmonids: dawn/dusk strongest, midday lower
         windows = [
             ("Early (best)", dawn_start, dawn_end, 0.90),
             ("Midday", midday_start, midday_end, 0.45),
             ("Evening (best)", dusk_start, dusk_end, 0.90),
         ]
     elif s in ["walleye"]:
-        # Walleye: low light + evening into night; keep it within the chosen day
-        night_end = sunset + timedelta(hours=3)
-        night_end = clamp_dt_to_day(night_end, target_day) if night_end.date() != target_day else night_end
         windows = [
             ("Early", dawn_start, dawn_end, 0.75),
             ("Midday", midday_start, midday_end, 0.35),
             ("Evening (best)", dusk_start, dusk_end, 0.90),
         ]
     elif s in ["smallmouth bass", "largemouth bass", "bass"]:
-        # Bass: early + late, with a moderate midday option
         windows = [
             ("Early (best)", dawn_start, dawn_end, 0.85),
             ("Midday", midday_start, midday_end, 0.60),
             ("Evening (best)", dusk_start, dusk_end, 0.85),
         ]
     elif s in ["catfish", "channel catfish", "bullhead"]:
-        # Catfish: late day / evening; keep daytime-friendly because app is "day of choice"
         windows = [
             ("Early", dawn_start, dawn_end, 0.45),
             ("Midday", midday_start, midday_end, 0.50),
             ("Evening (best)", dusk_start, dusk_end, 0.90),
         ]
-    else:
-        # Default general windows
-        pass
 
-    # Ensure all window datetimes match the target day (in case of odd timezone transitions)
+    # Ensure all window datetimes match the target day (timezone oddities)
     fixed = []
     for label, start_dt, end_dt, weight in windows:
         if start_dt.date() != target_day:
@@ -216,7 +206,7 @@ def wind_every_n_hours(times, speeds, dirs, target_day: date, step_hours: int):
 
 def make_fishing_graph(target_day: date, windows):
     """
-    Creates a simple time-axis graph with shaded "good" windows.
+    Simple time-axis graph with shaded "good" windows.
     Returns PNG buffer.
     """
     start = datetime(target_day.year, target_day.month, target_day.day, 0, 0, 0)
@@ -228,7 +218,7 @@ def make_fishing_graph(target_day: date, windows):
     # Baseline
     ax.plot([start, end], [0, 0])
 
-    # Shaded windows based on weight
+    # Shaded windows based on weight (no manual colors)
     for label, s_dt, e_dt, weight in windows:
         ax.axvspan(s_dt, e_dt, alpha=max(0.08, min(0.35, weight * 0.35)))
 
@@ -252,7 +242,7 @@ def species_note(species: str):
     if s in ["kokanee", "rainbow trout", "chinook", "lake trout", "trout"]:
         return "Trolling usually lines up best with dawn and dusk. Keep passes clean when wind shifts."
     if s in ["walleye"]:
-        return "Low light is your friend. Focus dusk and the first hours after sunset when possible."
+        return "Low light is your friend. Focus dusk when possible."
     if s in ["smallmouth bass", "largemouth bass", "bass"]:
         return "Early and late are strongest. Wind can help by pushing bait onto banks and points."
     if s in ["catfish", "channel catfish", "bullhead"]:
@@ -322,37 +312,53 @@ else:
 st.markdown("### Location")
 st.write(f"{place_label} (lat {lat:.4f}, lon {lon:.4f})")
 
-# Fetch weather
+# Fetch weather (with graceful fallback)
 wx = fetch_weather(lat, lon, target_date)
+using_fallback = False
+
 if wx is None:
-    st.warning(
-        "Weather service is temporarily unavailable or rate-limited. Please try again in a minute."
+    using_fallback = True
+    st.info(
+        "Live weather temporarily unavailable or rate-limited. "
+        "Showing estimated fishing windows and a calm-wind fallback."
     )
-    st.stop()
 
-hourly = wx.get("hourly") or {}
-daily = wx.get("daily") or {}
+if using_fallback:
+    # Calm-wind fallback (keeps app useful)
+    times = [
+        datetime(target_date.year, target_date.month, target_date.day, h, 0).isoformat()
+        for h in range(0, 24)
+    ]
+    speeds = [3.0] * 24  # mph
+    dirs = [180.0] * 24  # degrees (S)
 
-times = hourly.get("time") or []
-speeds = hourly.get("wind_speed_10m") or []
-dirs = hourly.get("wind_direction_10m") or []
+    # Basic sunrise/sunset fallback if API is unavailable
+    sunrise = datetime(target_date.year, target_date.month, target_date.day, 6, 30)
+    sunset = datetime(target_date.year, target_date.month, target_date.day, 17, 0)
+else:
+    hourly = wx.get("hourly") or {}
+    daily = wx.get("daily") or {}
 
-sunrise_list = daily.get("sunrise") or []
-sunset_list = daily.get("sunset") or []
+    times = hourly.get("time") or []
+    speeds = hourly.get("wind_speed_10m") or []
+    dirs = hourly.get("wind_direction_10m") or []
+
+    sunrise_list = daily.get("sunrise") or []
+    sunset_list = daily.get("sunset") or []
+
+    sunrise = parse_iso_dt(sunrise_list[0]) if sunrise_list else None
+    sunset = parse_iso_dt(sunset_list[0]) if sunset_list else None
 
 if not times or not speeds or not dirs:
-    st.warning("No wind data returned for this location/date.")
+    st.warning("No wind data available for this location/date.")
     st.stop()
-
-sunrise = parse_iso_dt(sunrise_list[0]) if sunrise_list else None
-sunset = parse_iso_dt(sunset_list[0]) if sunset_list else None
 
 # Best fishing windows based on sunrise/sunset + species
 st.markdown("### Best Fishing Times (graph)")
 if sunrise and sunset:
     windows = compute_fishing_windows(sunrise, sunset, target_date, species)
 else:
-    # Fallback if sunrise/sunset missing
+    # Fallback if sunrise/sunset missing (rare)
     start = datetime(target_date.year, target_date.month, target_date.day, 6, 0, 0)
     mid = datetime(target_date.year, target_date.month, target_date.day, 12, 0, 0)
     eve = datetime(target_date.year, target_date.month, target_date.day, 18, 0, 0)
@@ -378,7 +384,6 @@ st.markdown("### Wind (every 2 hours)")
 wind2 = wind_every_n_hours(times, speeds, dirs, target_date, step_hours=2)
 
 if not wind2:
-    # fallback: show first few entries
     for i in range(min(12, len(times))):
         ttxt = parse_iso_dt(times[i]).strftime("%-I:%M %p")
         st.write(f"• {ttxt}: {float(speeds[i]):.0f} mph ({wind_dir_to_text(float(dirs[i]))})")
