@@ -3,7 +3,6 @@ from datetime import datetime, date, timedelta
 import pytz
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
 import plotly.graph_objects as go
 
 from astral import LocationInfo
@@ -70,14 +69,17 @@ def geocode_city_state(city: str, state: str):
         raise ValueError("Enter City and State.")
 
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    r = requests.get(url, params={"name": city.strip(), "count": 25, "language": "en", "format": "json"}, timeout=12)
+    r = requests.get(
+        url,
+        params={"name": city.strip(), "count": 25, "language": "en", "format": "json"},
+        timeout=12,
+    )
     r.raise_for_status()
     results = r.json().get("results") or []
     if not results:
         raise ValueError("City not found.")
 
     state_u = state.strip().upper()
-
     us = [x for x in results if (x.get("country_code") or "").upper() == "US"]
     if not us:
         raise ValueError("No US matches found.")
@@ -87,7 +89,6 @@ def geocode_city_state(city: str, state: str):
         admin1 = (x.get("admin1") or "").upper()
         if state_u in admin1:
             return float(x["latitude"]), float(x["longitude"]), f"{x['name']}, {x.get('admin1','')}"
-    # fallback to first US result
     x = us[0]
     return float(x["latitude"]), float(x["longitude"]), f"{x['name']}, {x.get('admin1','')}"
 
@@ -161,9 +162,11 @@ def build_bite_curve_for_day(day: date, tz: pytz.BaseTzInfo, events: dict):
     # major
     add(events.get("overhead"), 1.00, 95)
     add(events.get("underfoot"), 1.00, 95)
+
     # minor
     add(events.get("moonrise"), 0.65, 55)
     add(events.get("moonset"), 0.65, 55)
+
     # sun bonus
     add(events.get("sunrise"), 0.55, 50)
     add(events.get("sunset"), 0.55, 50)
@@ -213,7 +216,7 @@ st.markdown("""
     <div>
       <div style="font-size:20px; font-weight:700;">FishyNW Fishing Times</div>
       <div class="muted" style="font-size:13px;">
-        Bite index across multiple days (drag to zoom, swipe to explore).
+        Bite index across multiple days.
       </div>
     </div>
   </div>
@@ -235,7 +238,7 @@ with colA:
     state = st.text_input("State", "ID")
 
     st.markdown(
-        '<div class="muted small">Tip: If your city exists in multiple states, use the two-letter state code.</div>',
+        '<div class="muted small">Use the day selector to jump between days.</div>',
         unsafe_allow_html=True
     )
 
@@ -251,8 +254,8 @@ with colB:
   <div class="muted" style="font-size:13px; line-height:1.55;">
     <ul style="margin:0; padding-left:18px;">
       <li>Choose a start date, then 2 or 3 days.</li>
-      <li>Use pinch-zoom and drag to inspect peaks.</li>
-      <li>Use the day slider below to jump to a specific day.</li>
+      <li>Use the day slider below to jump to Day 1/2/3.</li>
+      <li>Pinch/drag to zoom and inspect peaks.</li>
     </ul>
   </div>
 </div>
@@ -266,19 +269,11 @@ with colB:
 if go_btn:
     try:
         lat, lon, place = geocode_city_state(city, state)
-
         x, y, slices = build_multi_day_series(start_day, days, lat, lon, tz)
 
-        # Day jump slider (indexes into slices)
-        if days == 2:
-            labels = [slices[0][0], slices[1][0]]
-        else:
-            labels = [slices[0][0], slices[1][0], slices[2][0]]
-
-        day_idx = st.slider("Jump to day", 0, days - 1, 0, format="%d")
+        day_idx = st.slider("Jump to day", 0, days - 1, 0)
         label, i0, i1 = slices[day_idx]
 
-        # Build plotly figure
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name="Bite Index"))
 
