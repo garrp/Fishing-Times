@@ -22,9 +22,10 @@ st.set_page_config(
 # ----------------------------
 # Styling
 # ----------------------------
-st.markdown("""
+st.markdown(
+    """
 <style>
-.block-container { max-width: 1150px; padding-top: 1.2rem; padding-bottom: 2.2rem; }
+.block-container { max-width: 1050px; padding-top: 1.2rem; padding-bottom: 2.0rem; }
 .fishynw-card {
   background: rgba(17,26,46,.55);
   border-radius: 18px;
@@ -32,34 +33,33 @@ st.markdown("""
   border: 1px solid rgba(255,255,255,.10);
 }
 .muted { color: rgba(235,240,255,.70); }
-.pill {
-  display:inline-flex; gap:8px; padding:6px 10px;
-  border-radius:999px; font-size:12px;
-  border:1px solid rgba(255,255,255,.12);
-  background: rgba(10,16,30,.35);
-}
-.footer { margin-top:28px; text-align:center; font-size:12px; color:#9fb2d9; }
+.footer { margin-top: 26px; text-align:center; font-size:12px; color:#9fb2d9; }
 .footer a { color:#6fd3ff; text-decoration:none; }
 .small { font-size:12px; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ----------------------------
 # Helpers
 # ----------------------------
-def clamp(x, a, b):
+def clamp(x: float, a: float, b: float) -> float:
     return max(a, min(b, x))
 
-def gaussian(x, mu, sigma):
+def gaussian(x: float, mu: float, sigma: float) -> float:
     return math.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
-def minutes_since_midnight(dt, tz):
+def minutes_since_midnight(dt: datetime, tz: pytz.BaseTzInfo) -> int:
     local = dt.astimezone(tz)
     return local.hour * 60 + local.minute
 
-def to_datetime_local_naive(day: date, minute: int):
-    # naive local datetime (Plotly handles naive fine)
-    return datetime(day.year, day.month, day.day, minute // 60, minute % 60)
+def to_datetime_local_naive(d: date, minute: int) -> datetime:
+    # Plotly is happy with naive local datetimes
+    return datetime(d.year, d.month, d.day, minute // 60, minute % 60)
+
+def mph_from_kmh(kmh: float) -> float:
+    return kmh * 0.621371
 
 # ----------------------------
 # Geocoding (Open-Meteo)
@@ -84,7 +84,7 @@ def geocode_city_state(city: str, state: str):
     if not us:
         raise ValueError("No US matches found.")
 
-    # Prefer state match in admin1
+    # Prefer state match
     for x in us:
         admin1 = (x.get("admin1") or "").upper()
         if state_u in admin1:
@@ -93,7 +93,7 @@ def geocode_city_state(city: str, state: str):
     return float(x["latitude"]), float(x["longitude"]), f"{x['name']}, {x.get('admin1','')}"
 
 # ----------------------------
-# Astronomy per-day events
+# Sun/Moon events
 # ----------------------------
 def get_events(day: date, lat: float, lon: float, tz: pytz.BaseTzInfo):
     loc = LocationInfo("", "", tz.zone, lat, lon)
@@ -102,7 +102,6 @@ def get_events(day: date, lat: float, lon: float, tz: pytz.BaseTzInfo):
     obs = ephem.Observer()
     obs.lat, obs.lon = str(lat), str(lon)
 
-    # set observer date to local midnight -> UTC
     local_midnight = tz.localize(datetime(day.year, day.month, day.day, 0, 0, 0))
     obs.date = local_midnight.astimezone(pytz.utc)
 
@@ -146,9 +145,45 @@ def get_events(day: date, lat: float, lon: float, tz: pytz.BaseTzInfo):
     }
 
 # ----------------------------
-# Bite curve per day (minute-based)
+# Wind (Open-Meteo Forecast API)
 # ----------------------------
-def build_bite_curve_for_day(day: date, tz: pytz.BaseTzInfo, events: dict):
+def fetch_wind_for_day(day: date, lat: float, lon: float, tz: str):
+    """
+    Returns dict keyed by local hour (0..23):
+      { hour: {"speed_mph":..., "gust_mph":..., "dir_deg":...}, ... }
+    Uses Open-Meteo hourly wind_speed_10m / wind_direction_10m / wind_gusts_10m. 3
+    """
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+        "timezone": tz,
+        "start_date": day.isoformat(),
+        "end_date": day.isoformat(),
+        "wind_speed_unit": "mph",  # Open-Meteo supports unit selection in docs 4
+    }
+    r = requests.get(url, params=params, timeout=12)
+    r.raise_for_status()
+    data = r.json()
+
+    hourly = data.get("hourly") or {}
+    times = hourly.get("time") or []
+    ws = hourly.get("wind_speed_10m") or []
+    wd = hourly.get("wind_direction_10m") or []
+    wg = hourly.get("wind_gusts_10m") or []
+
+    out = {}
+    for t_str, s_mph, d_deg, g_mph in zip(times, ws, wd, wg):
+        # time format: "YYYY-MM-DDTHH:MM"
+        hh = int(t_str.split("T")[1].split(":")[0])
+        out[hh] = {"speed_mph": float(s_mph), "gust_mph": float(g_mph), "dir_deg": float(d_deg)}
+    return out
+
+# ----------------------------
+# Bite curve (per-minute)
+# ----------------------------
+def build_bite_curve(day: date, tz: pytz.BaseTzInfo, events: dict):
     centers = []
     weights = []
     sigmas = []
@@ -159,136 +194,173 @@ def build_bite_curve_for_day(day: date, tz: pytz.BaseTzInfo, events: dict):
             weights.append(w)
             sigmas.append(sigma)
 
-    # major
+    # Major
     add(events.get("overhead"), 1.00, 95)
     add(events.get("underfoot"), 1.00, 95)
-
-    # minor
+    # Minor
     add(events.get("moonrise"), 0.65, 55)
     add(events.get("moonset"), 0.65, 55)
-
-    # sun bonus
+    # Sun bonus
     add(events.get("sunrise"), 0.55, 50)
     add(events.get("sunset"), 0.55, 50)
 
-    xs = []
-    ys = []
-
+    x = []
+    y = []
     for m in range(1440):
-        val = 25.0  # baseline
+        val = 25.0
         for c, w, sig in zip(centers, weights, sigmas):
-            d = min(abs(m - c), 1440 - abs(m - c))
-            val += w * 60.0 * gaussian(d, 0.0, sig)
-        ys.append(clamp(val, 0, 100))
-        xs.append(to_datetime_local_naive(day, m))
-
-    return xs, ys
-
-# ----------------------------
-# Multi-day build
-# ----------------------------
-def build_multi_day_series(start_day: date, days: int, lat: float, lon: float, tz: pytz.BaseTzInfo):
-    all_x = []
-    all_y = []
-    day_slices = []  # (label, start_idx, end_idx)
-
-    idx = 0
-    for i in range(days):
-        d = start_day + timedelta(days=i)
-        ev = get_events(d, lat, lon, tz)
-        xs, ys = build_bite_curve_for_day(d, tz, ev)
-
-        all_x.extend(xs)
-        all_y.extend(ys)
-
-        day_slices.append((d.strftime("%a %b %-d"), idx, idx + len(xs) - 1))
-        idx += len(xs)
-
-    return all_x, all_y, day_slices
+            dmin = min(abs(m - c), 1440 - abs(m - c))
+            val += w * 60.0 * gaussian(dmin, 0.0, sig)
+        x.append(to_datetime_local_naive(day, m))
+        y.append(clamp(val, 0, 100))
+    return x, y
 
 # ----------------------------
-# UI Header
+# Wind penalty (simple + transparent)
 # ----------------------------
-st.markdown("""
+def apply_wind_penalty(bite: float, wind_mph: float, gust_mph: float) -> float:
+    """
+    Simple rule:
+      - light wind 0–6 mph: no penalty
+      - 7–15 mph: mild penalty
+      - 16+ mph: bigger penalty
+      - gusts add extra penalty
+    """
+    penalty = 0.0
+    if wind_mph > 6:
+        penalty += (wind_mph - 6) * 1.1
+    if wind_mph > 15:
+        penalty += (wind_mph - 15) * 0.9
+    if gust_mph > wind_mph + 8:
+        penalty += (gust_mph - (wind_mph + 8)) * 0.8
+
+    return clamp(bite - penalty, 0, 100)
+
+
+# ----------------------------
+# UI
+# ----------------------------
+st.markdown(
+    """
 <div class="fishynw-card">
   <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
     <div style="font-size:28px;">🎣</div>
     <div>
       <div style="font-size:20px; font-weight:700;">FishyNW Fishing Times</div>
-      <div class="muted" style="font-size:13px;">
-        Bite index across multiple days.
-      </div>
+      <div class="muted" style="font-size:13px;">One-day bite index with wind overlay</div>
     </div>
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 tz = pytz.timezone("America/Los_Angeles")
+tz_name = tz.zone
 
 st.write("")
-colA, colB = st.columns([1.15, 0.85], gap="large")
+st.markdown('<div class="fishynw-card">', unsafe_allow_html=True)
 
-with colA:
-    st.markdown('<div class="fishynw-card">', unsafe_allow_html=True)
+day = st.date_input("Date", value=datetime.now(tz).date())
+city = st.text_input("City", "Coeur d'Alene")
+state = st.text_input("State", "ID")
 
-    start_day = st.date_input("Start date", value=datetime.now(tz).date())
-    days = st.selectbox("Days to show", [2, 3], index=0)
+use_wind_penalty = st.toggle("Adjust bite index using wind", value=True)
 
-    city = st.text_input("City", "Coeur d'Alene")
-    state = st.text_input("State", "ID")
+go_btn = st.button("Generate graph", type="primary")
 
-    st.markdown(
-        '<div class="muted small">Use the day selector to jump between days.</div>',
-        unsafe_allow_html=True
-    )
-
-    go_btn = st.button("Generate multi-day graph", type="primary")
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with colB:
-    st.markdown(
-        """
-<div class="fishynw-card">
-  <div style="font-size:16px; font-weight:700; margin-bottom:6px;">How to use</div>
-  <div class="muted" style="font-size:13px; line-height:1.55;">
-    <ul style="margin:0; padding-left:18px;">
-      <li>Choose a start date, then 2 or 3 days.</li>
-      <li>Use the day slider below to jump to Day 1/2/3.</li>
-      <li>Pinch/drag to zoom and inspect peaks.</li>
-    </ul>
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------
-# Graph output
+# Output
 # ----------------------------
 if go_btn:
     try:
         lat, lon, place = geocode_city_state(city, state)
-        x, y, slices = build_multi_day_series(start_day, days, lat, lon, tz)
 
-        day_idx = st.slider("Jump to day", 0, days - 1, 0)
-        label, i0, i1 = slices[day_idx]
+        events = get_events(day, lat, lon, tz)
+        x, bite = build_bite_curve(day, tz, events)
+
+        wind_by_hour = fetch_wind_for_day(day, lat, lon, tz_name)
+
+        # Build per-minute wind speed series by holding each hour's value
+        wind_x = []
+        wind_speed = []
+        wind_gust = []
+
+        for m in range(1440):
+            dt = x[m]
+            hh = dt.hour
+            w = wind_by_hour.get(hh)
+            if w:
+                wind_speed.append(float(w["speed_mph"]))
+                wind_gust.append(float(w["gust_mph"]))
+            else:
+                wind_speed.append(None)
+                wind_gust.append(None)
+            wind_x.append(dt)
+
+        bite_adj = bite[:]
+        if use_wind_penalty:
+            tmp = []
+            for m in range(1440):
+                ws = wind_speed[m]
+                wg = wind_gust[m]
+                if ws is None or wg is None:
+                    tmp.append(bite[m])
+                else:
+                    tmp.append(apply_wind_penalty(bite[m], ws, wg))
+            bite_adj = tmp
 
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name="Bite Index"))
 
-        # Focus view to selected day range by default (still zoomable)
-        fig.update_xaxes(range=[x[i0], x[i1]])
-        fig.update_yaxes(range=[0, 100], title="Bite Index (0–100)")
+        # Bite index line
+        fig.add_trace(go.Scatter(
+            x=x,
+            y=bite_adj,
+            mode="lines",
+            name="Bite Index",
+            hovertemplate="%{x|%I:%M %p}<br>Bite: %{y:.0f}<extra></extra>",
+        ))
+
+        # Wind speed on secondary axis
+        fig.add_trace(go.Scatter(
+            x=wind_x,
+            y=wind_speed,
+            mode="lines",
+            name="Wind Speed (mph)",
+            yaxis="y2",
+            hovertemplate="%{x|%I:%M %p}<br>Wind: %{y:.0f} mph<extra></extra>",
+        ))
+
+        # Gusts (optional, faint)
+        fig.add_trace(go.Scatter(
+            x=wind_x,
+            y=wind_gust,
+            mode="lines",
+            name="Gusts (mph)",
+            yaxis="y2",
+            hovertemplate="%{x|%I:%M %p}<br>Gust: %{y:.0f} mph<extra></extra>",
+            opacity=0.35,
+        ))
 
         fig.update_layout(
-            title=f"Bite Index • {place} • {days} day view",
+            title=f"Bite Index • {place}",
+            height=480,
             margin=dict(l=10, r=10, t=45, b=10),
-            height=420,
-            showlegend=False
+            hovermode="x unified",
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            yaxis=dict(title="Bite Index (0–100)", range=[0, 100]),
+            yaxis2=dict(title="Wind (mph)", overlaying="y", side="right"),
         )
 
         st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown(
+            f'<div class="muted small">Wind data: Open-Meteo hourly wind_speed_10m / wind_direction_10m / wind_gusts_10m.</div>',
+            unsafe_allow_html=True
+        )
 
     except Exception as e:
         st.error(str(e))
@@ -296,9 +368,12 @@ if go_btn:
 # ----------------------------
 # Footer
 # ----------------------------
-st.markdown("""
+st.markdown(
+    """
 <div class="footer">
   🎣 <b>FishyNW</b> • <a href="https://fishynw.com" target="_blank" rel="noopener">fishynw.com</a><br>
   Pacific Northwest Fishing • #adventure
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
