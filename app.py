@@ -5,7 +5,6 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-# External libs (see requirements.txt below)
 from astral import LocationInfo
 from astral.sun import sun
 import ephem
@@ -26,7 +25,6 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-/* overall */
 .block-container { padding-top: 1.4rem; padding-bottom: 2.5rem; max-width: 1100px; }
 .fishynw-card {
   border: 1px solid rgba(255,255,255,.10);
@@ -80,6 +78,35 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ----------------------------
+# State normalization
+# ----------------------------
+US_STATES = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+    "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri",
+    "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+    "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio",
+    "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
+    "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+    "DC": "District of Columbia",
+}
+STATE_NAME_TO_CODE = {v.upper(): k for k, v in US_STATES.items()}
+
+
+def normalize_state(state_input: str) -> str | None:
+    s = (state_input or "").strip().upper()
+    if not s:
+        return None
+    if len(s) == 2 and s in US_STATES:
+        return s
+    if s in STATE_NAME_TO_CODE:
+        return STATE_NAME_TO_CODE[s]
+    return None
+
 
 # ----------------------------
 # Utils
@@ -105,7 +132,6 @@ def clamp(x: float, a: float, b: float) -> float:
 
 
 def phase_label(phase: float) -> str:
-    # phase in [0..1): 0=new, 0.25=first quarter, 0.5=full, 0.75=last quarter
     def near(x, eps=0.03):
         return abs(phase - x) <= eps or abs((phase + 1) - x) <= eps
 
@@ -127,11 +153,10 @@ def phase_label(phase: float) -> str:
 
 
 def phase_boost(phase: float) -> float:
-    # Favor new/full slightly
     d_new = min(abs(phase - 0.0), abs(phase - 1.0))
     d_full = abs(phase - 0.5)
-    d = min(d_new, d_full)  # 0..0.25-ish
-    return 1.15 - (d / 0.25) * 0.20  # 1.15 down to 0.95
+    d = min(d_new, d_full)
+    return 1.15 - (d / 0.25) * 0.20
 
 
 def bucket(score: int) -> tuple[str, str]:
@@ -151,25 +176,51 @@ def score_from_inputs(phase: float, has_moonrise_set: bool) -> int:
 
 
 # ----------------------------
-# Geocoding (City/State) via Open-Meteo
+# Geocoding (City/State) via Open-Meteo (city-only query + filter)
 # ----------------------------
-def geocode_city_state(city: str, state_code: str) -> dict:
-    q = f"{city}, {state_code}, USA"
+def geocode_city_state(city: str, state_input: str) -> dict:
+    state_code = normalize_state(state_input)
+    if not state_code:
+        raise ValueError("Enter a valid US state (example: ID, WA, OR) or full state name (Idaho).")
+
+    if not city or not city.strip():
+        raise ValueError("Enter a city name.")
+
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {"name": q, "count": 5, "language": "en", "format": "json"}
+    params = {"name": city.strip(), "count": 25, "language": "en", "format": "json"}
     r = requests.get(url, params=params, timeout=12)
     r.raise_for_status()
     data = r.json()
     results = data.get("results") or []
     if not results:
-        raise ValueError("No matches found for that City/State.")
+        raise ValueError("No cities found with that name.")
 
-    # Prefer US results if present
-    best = results[0]
-    for item in results:
-        if (item.get("country_code") or "").upper() == "US":
-            best = item
+    # Filter US only
+    us_results = [x for x in results if (x.get("country_code") or "").upper() == "US"]
+    if not us_results:
+        raise ValueError("No US matches found for that city.")
+
+    desired_state_name = US_STATES[state_code].upper()
+
+    # Prefer exact state name match in admin1
+    best = None
+    for x in us_results:
+        admin1 = (x.get("admin1") or "").upper()
+        if admin1 == desired_state_name:
+            best = x
             break
+
+    # Next: contains state name (some results include extra text)
+    if best is None:
+        for x in us_results:
+            admin1 = (x.get("admin1") or "").upper()
+            if desired_state_name in admin1:
+                best = x
+                break
+
+    # Fallback: first US result
+    if best is None:
+        best = us_results[0]
 
     place = ", ".join([p for p in [best.get("name"), best.get("admin1"), best.get("country")] if p])
     return {"lat": float(best["latitude"]), "lon": float(best["longitude"]), "place": place}
@@ -185,13 +236,10 @@ def get_sun_times(local_date: date, lat: float, lon: float, tz: pytz.BaseTzInfo)
 
 
 def get_moon_times(local_date: date, lat: float, lon: float, tz: pytz.BaseTzInfo) -> dict:
-    """
-    Moonrise/moonset via PyEphem. Times returned in local timezone when possible.
-    """
     obs = ephem.Observer()
     obs.lat = str(lat)
     obs.lon = str(lon)
-    # Set observer date to local midnight converted to UTC because PyEphem expects UTC-ish
+
     local_midnight = tz.localize(datetime(local_date.year, local_date.month, local_date.day, 0, 0, 0))
     obs.date = ephem.Date(local_midnight.astimezone(pytz.utc))
 
@@ -199,6 +247,7 @@ def get_moon_times(local_date: date, lat: float, lon: float, tz: pytz.BaseTzInfo
 
     moonrise = None
     moonset = None
+
     try:
         mr = obs.next_rising(moon)
         moonrise = ephem.Date(mr).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
@@ -211,25 +260,17 @@ def get_moon_times(local_date: date, lat: float, lon: float, tz: pytz.BaseTzInfo
     except Exception:
         moonset = None
 
-    # Moon phase (0..1) from ephem: moon.phase is illumination percentage (0..100)
-    # For a proper 0..1 phase (new->full->new), we estimate using ephem.Moon().phase + elongation sign.
-    # We'll produce:
-    # - illumination fraction (0..1) from moon.phase
-    # - "phase" 0..1 using moon.elong and moon.earth_distance? Not ideal.
-    # We'll instead compute phase based on days since known new moon using ephem.next_new_moon.
-    # That yields a stable 0..1 mapping.
+    # Phase 0..1 using lunation fraction between previous & next new moon around local noon
     try:
-        # Use the local date noon to avoid DST boundary weirdness
         local_noon = tz.localize(datetime(local_date.year, local_date.month, local_date.day, 12, 0, 0))
         now_utc = ephem.Date(local_noon.astimezone(pytz.utc))
         prev_new = ephem.previous_new_moon(now_utc)
         next_new = ephem.next_new_moon(now_utc)
-        lunation = (now_utc - prev_new) / (next_new - prev_new)  # 0..1
-        phase01 = float(lunation)
+        phase01 = float((now_utc - prev_new) / (next_new - prev_new))
     except Exception:
         phase01 = 0.0
 
-    # illumination fraction at local noon
+    # Illumination fraction at local noon
     try:
         obs2 = ephem.Observer()
         obs2.lat = str(lat)
@@ -244,16 +285,12 @@ def get_moon_times(local_date: date, lat: float, lon: float, tz: pytz.BaseTzInfo
 
 
 def find_moon_extrema(local_date: date, lat: float, lon: float, tz: pytz.BaseTzInfo) -> dict:
-    """
-    Approx moon overhead/underfoot by sampling moon altitude across the day (every 5 minutes).
-    """
     obs = ephem.Observer()
     obs.lat = str(lat)
     obs.lon = str(lon)
     moon = ephem.Moon()
 
     local_start = tz.localize(datetime(local_date.year, local_date.month, local_date.day, 0, 0, 0))
-    # sample every 5 minutes
     step = timedelta(minutes=5)
     samples = int((24 * 60) / 5)
 
@@ -279,38 +316,36 @@ def find_moon_extrema(local_date: date, lat: float, lon: float, tz: pytz.BaseTzI
 
 
 # ----------------------------
-# GPS geolocation (browser -> Streamlit)
+# Browser location component (runs only when button pressed)
 # ----------------------------
 def geolocation_component(height: int = 0):
-    """
-    Uses browser geolocation and posts coords back to Streamlit via query params.
-    """
-    html = f"""
+    html = """
     <script>
-      const send = (lat, lon) => {{
+      const send = (lat, lon) => {
         const url = new URL(window.parent.location);
         url.searchParams.set("lat", lat);
         url.searchParams.set("lon", lon);
-        window.parent.history.replaceState({{}}, "", url.toString());
-        window.parent.postMessage({{type: "fishynw_geo", lat, lon}}, "*");
-      }};
+        url.searchParams.delete("geo_error");
+        window.parent.history.replaceState({}, "", url.toString());
+        window.parent.postMessage({type: "fishynw_geo", lat, lon}, "*");
+      };
 
-      const err = (msg) => {{
+      const err = (msg) => {
         const url = new URL(window.parent.location);
         url.searchParams.set("geo_error", msg);
-        window.parent.history.replaceState({{}}, "", url.toString());
-        window.parent.postMessage({{type: "fishynw_geo_error", msg}}, "*");
-      }};
+        window.parent.history.replaceState({}, "", url.toString());
+        window.parent.postMessage({type: "fishynw_geo_error", msg}, "*");
+      };
 
-      if (!navigator.geolocation) {{
+      if (!navigator.geolocation) {
         err("Geolocation not supported in this browser.");
-      }} else {{
+      } else {
         navigator.geolocation.getCurrentPosition(
           (pos) => send(pos.coords.latitude, pos.coords.longitude),
           (e) => err(e.message || "Unable to get location."),
-          {{ enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }}
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
         );
-      }}
+      }
     </script>
     """
     components.html(html, height=height)
@@ -327,7 +362,7 @@ st.markdown(
     <div>
       <div style="font-size:20px; font-weight:700;">FishyNW Fishing Times</div>
       <div class="muted" style="font-size:13px;">
-        Solunar-style bite windows using moon overhead/underfoot + moonrise/set. GPS optional.
+        Solunar-style bite windows using moon overhead/underfoot + moonrise/set.
       </div>
     </div>
   </div>
@@ -338,8 +373,33 @@ st.markdown(
 
 st.write("")
 
-# Default timezone (you said America/Los_Angeles)
+# Timezone
 tz = pytz.timezone("America/Los_Angeles")
+
+# Session state
+if "lat" not in st.session_state:
+    st.session_state.lat = None
+if "lon" not in st.session_state:
+    st.session_state.lon = None
+if "place" not in st.session_state:
+    st.session_state.place = None
+
+# Pull coords from URL query params if present
+qp = st.query_params
+q_lat = qp.get("lat", None)
+q_lon = qp.get("lon", None)
+geo_error = qp.get("geo_error", None)
+
+if geo_error:
+    st.error(f"Location error: {geo_error}")
+
+if q_lat and q_lon:
+    try:
+        st.session_state.lat = float(q_lat)
+        st.session_state.lon = float(q_lon)
+        st.session_state.place = "Device location"
+    except Exception:
+        pass
 
 # ----------------------------
 # Controls
@@ -352,51 +412,23 @@ with colA:
     today = datetime.now(tz).date()
     chosen_date = st.date_input("Date", value=today)
 
-    method = st.selectbox("Location method", ["Use device GPS (optional)", "City + State (no GPS)"])
+    method = st.selectbox("Location method", ["Use device location", "City + State"])
 
-    # Pull coords from URL query params if present
-    qp = st.query_params
-    q_lat = qp.get("lat", None)
-    q_lon = qp.get("lon", None)
-    geo_error = qp.get("geo_error", None)
-
-    if "lat" not in st.session_state:
-        st.session_state.lat = None
-    if "lon" not in st.session_state:
-        st.session_state.lon = None
-    if "place" not in st.session_state:
-        st.session_state.place = None
-
-    if geo_error:
-        st.error(f"GPS error: {geo_error}")
-
-    if q_lat and q_lon:
-        try:
-            st.session_state.lat = float(q_lat)
-            st.session_state.lon = float(q_lon)
-            st.session_state.place = "Device location"
-        except Exception:
-            pass
-
-    if method == "Use device GPS (optional)":
-        if st.button("Use my location", type="primary"):
-            # run browser geolocation script
+    if method == "Use device location":
+        if st.button("Get location", type="primary"):
             geolocation_component()
-
-        st.caption("If you deny GPS, use City + State instead.")
-
     else:
-        c1, c2, c3 = st.columns([1.0, 0.5, 0.6])
+        c1, c2, c3 = st.columns([1.0, 0.55, 0.65])
         with c1:
             city = st.text_input("City", placeholder="Coeur d'Alene")
         with c2:
-            state_code = st.text_input("State", placeholder="ID", max_chars=2)
+            state_input = st.text_input("State", placeholder="ID", max_chars=20)
         with c3:
             st.write("")
             st.write("")
             if st.button("Find", type="primary"):
                 try:
-                    loc = geocode_city_state(city.strip(), state_code.strip().upper())
+                    loc = geocode_city_state(city.strip(), state_input.strip())
                     st.session_state.lat = loc["lat"]
                     st.session_state.lon = loc["lon"]
                     st.session_state.place = loc["place"]
@@ -457,7 +489,7 @@ with colB:
 # ----------------------------
 if run:
     if st.session_state.lat is None or st.session_state.lon is None:
-        st.error("Set a location first (GPS or City/State).")
+        st.error("Set a location first.")
     else:
         lat = float(st.session_state.lat)
         lon = float(st.session_state.lon)
@@ -480,7 +512,6 @@ if run:
             score = score_from_inputs(phase01, has_moonrise_set)
             label, cls = bucket(score)
 
-            # KPIs
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.markdown(
@@ -543,28 +574,23 @@ if run:
                     unsafe_allow_html=True,
                 )
 
-            # Major windows ±120
             time_item("Major Period (Moon Overhead)", extrema.get("overhead"), 120, "Major", cls)
             time_item("Major Period (Moon Underfoot)", extrema.get("underfoot"), 120, "Major", cls)
 
-            # Minor windows ±60
             if moonrise:
                 time_item("Minor Period (Moonrise)", moonrise, 60, "Minor", "okay")
             if moonset:
                 time_item("Minor Period (Moonset)", moonset, 60, "Minor", "okay")
 
             if not moonrise and not moonset:
-                st.warning(
-                    "Minor periods unavailable for this date/location (moonrise/set can be undefined at some latitudes/seasons). Major periods still work."
-                )
+                st.warning("Minor periods unavailable for this date/location. Major periods still work.")
 
-            # Bonus sunrise/sunset ±60
             if sunrise:
                 time_item("Bonus: Sunrise Window", sunrise, 60, "Sun", "okay")
             if sunset:
                 time_item("Bonus: Sunset Window", sunset, 60, "Sun", "okay")
 
-            st.caption("Tip: Treat these as planning windows. Confirm with wind, pressure, and water temp for your target species.")
+            st.caption("Use these windows for planning, then confirm with wind, pressure, and water temp.")
 
         except Exception as e:
             st.error(f"Calculation error: {e}")
@@ -578,7 +604,7 @@ st.markdown(
   🎣 <b>FishyNW</b> •
   <a href="https://fishynw.com" target="_blank" rel="noopener">fishynw.com</a>
   <div style="margin-top:6px; font-size:12px;">
-    Pacific Northwest Fishing • GPS optional • #adventure
+    Pacific Northwest Fishing • #adventure
   </div>
 </div>
 """,
