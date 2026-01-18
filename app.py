@@ -1,17 +1,20 @@
 import io
 import math
+import time
 import requests
 import streamlit as st
 import matplotlib.pyplot as plt
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, date, timedelta
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # -----------------------------
 # FishyNW Fishing Times (Streamlit)
 # - One day only
 # - Wind every 4 hours (text bullets)
 # - Static graph image
-# - User inputs (location, date, species)
-# - ASCII-safe to avoid "invalid non-printable"
+# - User inputs (location, date, species, manual lat/lon)
+# - Resilient network calls (cache + retry + longer timeouts)
 # -----------------------------
 
 APP_TITLE = "FishyNW Fishing Times"
@@ -25,10 +28,32 @@ def safe_read_logo(path: str):
         return None
 
 
+def make_session():
+    session = requests.Session()
+    retry = Retry(
+        total=4,
+        connect=4,
+        read=4,
+        backoff_factor=0.6,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+SESSION = make_session()
+
+
+@st.cache_data(ttl=86400)
 def geocode_city(city: str):
     """
     Geocode using Open-Meteo Geocoding API (no key).
-    Returns (name, lat, lon) or (None, None, None).
+    Cached for 24 hours. Retries on transient failures.
+    Returns (label, lat, lon) or (None, None, None).
     """
     if not city or not city.strip():
         return None, None, None
@@ -40,8 +65,12 @@ def geocode_city(city: str):
         "language": "en",
         "format": "json",
     }
-    r = requests.get(url, params=params, timeout=15)
-    r.raise_for_status()
+
+    # Longer timeout helps on Streamlit Cloud/mobile
+    r = SESSION.get(url, params=params, timeout=(8, 25))
+    if r.status_code != 200:
+        return None, None, None
+
     data = r.json()
     results = data.get("results") or []
     if not results:
@@ -55,12 +84,13 @@ def geocode_city(city: str):
     return label, float(top["latitude"]), float(top["longitude"])
 
 
+@st.cache_data(ttl=1800)
 def fetch_weather(lat: float, lon: float, day: date):
     """
     Fetch hourly weather for one day from Open-Meteo.
-    Returns dict with arrays.
+    Cached for 30 minutes to avoid rate limits and reduce calls.
+    Retries on transient failures.
     """
-    # Build a 1-day window in ISO. Open-Meteo expects dates as YYYY-MM-DD.
     start = day.isoformat()
     end = (day + timedelta(days=1)).isoformat()
 
@@ -75,14 +105,13 @@ def fetch_weather(lat: float, lon: float, day: date):
         "end_date": end,
         "wind_speed_unit": "mph",
     }
-    r = requests.get(url, params=params, timeout=20)
+
+    r = SESSION.get(url, params=params, timeout=(8, 25))
     r.raise_for_status()
     return r.json()
 
 
 def parse_iso_dt(s: str):
-    # Open-Meteo returns ISO timestamps with timezone offset sometimes
-    # datetime.fromisoformat handles "YYYY-MM-DDTHH:MM" and offsets.
     return datetime.fromisoformat(s)
 
 
@@ -92,14 +121,9 @@ def wind_dir_to_text(deg: float):
     return dirs[ix]
 
 
-def format_hour(dt_obj: datetime):
-    # "6:00 AM" style
-    return dt_obj.strftime("%-I:%M %p") if hasattr(dt_obj, "strftime") else str(dt_obj)
-
-
 def compute_fishing_windows(sunrise: datetime, sunset: datetime):
     """
-    Simple, dependable windows (no fancy solunar):
+    Simple, dependable windows (not solunar):
     - Dawn: sunrise - 1:00 to sunrise + 1:30
     - Midday: 11:00 to 1:00 (local)
     - Dusk: sunset - 1:30 to sunset + 0:45
@@ -121,9 +145,6 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime):
 
 
 def pick_wind_every_4_hours(times, speeds, dirs):
-    """
-    Reduce hourly arrays down to entries every 4 hours, starting at the first hour present.
-    """
     picked = []
     for i in range(0, len(times), 4):
         t = parse_iso_dt(times[i])
@@ -132,9 +153,6 @@ def pick_wind_every_4_hours(times, speeds, dirs):
 
 
 def make_wind_chart(times, speeds, title):
-    """
-    Static chart image using matplotlib, rendered to a PNG buffer.
-    """
     x = [parse_iso_dt(t) for t in times]
     y = [float(v) for v in speeds]
 
@@ -177,7 +195,17 @@ with st.form("inputs"):
         target_date = st.date_input("Date", value=date.today())
         species = st.selectbox(
             "Target species",
-            ["Kokanee", "Rainbow trout", "Walleye", "Smallmouth bass", "Largemouth bass", "Chinook", "Lake trout", "Catfish", "Other"],
+            [
+                "Kokanee",
+                "Rainbow trout",
+                "Walleye",
+                "Smallmouth bass",
+                "Largemouth bass",
+                "Chinook",
+                "Lake trout",
+                "Catfish",
+                "Other",
+            ],
             index=0,
         )
 
@@ -186,12 +214,12 @@ with st.form("inputs"):
     if manual:
         c3, c4 = st.columns(2)
         with c3:
-            lat = st.number_input("Latitude", value=47.6777, format="%.6f")
+            lat = st.number_input("Latitude", value=47.677700, format="%.6f")
         with c4:
-            lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
+            lon = st.number_input("Longitude", value=-116.780500, format="%.6f")
 
     show_chart = st.checkbox("Show wind chart image", value=True)
-    submitted = st.form_submit_button("Get fishing outlook")
+    submitted = st.form_submit_button("Get fishing outlook", use_container_width=True)
 
 if not submitted:
     st.stop()
@@ -205,11 +233,13 @@ if manual:
 else:
     place_label, lat, lon = geocode_city(city)
     if lat is None or lon is None:
-        st.error("Could not find that city. Try a simpler name or use manual lat/lon.")
+        st.warning(
+            "City lookup timed out or returned no results. Switch to manual lat/lon and try again."
+        )
         st.stop()
 
 st.markdown("### Location")
-st.write(f"{place_label}  (lat {lat:.4f}, lon {lon:.4f})")
+st.write(f"{place_label} (lat {lat:.4f}, lon {lon:.4f})")
 
 # Fetch weather
 try:
@@ -233,7 +263,6 @@ if not times or not wind_speeds or not wind_dirs:
     st.error("No hourly wind data returned for this location/date.")
     st.stop()
 
-# Sunrise/sunset (use first entry for the day)
 sunrise = parse_iso_dt(sunrise_list[0]) if sunrise_list else None
 sunset = parse_iso_dt(sunset_list[0]) if sunset_list else None
 
@@ -244,37 +273,33 @@ if sunrise and sunset:
 else:
     st.write("Sunrise/sunset unavailable for this request.")
 
-# Fishing windows
 st.markdown("### Best Fishing Windows (simple)")
 if sunrise and sunset:
     windows = compute_fishing_windows(sunrise, sunset)
-    # Bullet list
     for label, start_dt, end_dt in windows:
-        st.write(f"• {label}: {start_dt.strftime('%-I:%M %p')} - {end_dt.strftime('%-I:%M %p')}")
+        st.write(
+            f"• {label}: {start_dt.strftime('%-I:%M %p')} - {end_dt.strftime('%-I:%M %p')}"
+        )
 else:
     st.write("• Early: 6:00 AM - 8:00 AM")
     st.write("• Midday: 11:00 AM - 1:00 PM")
     st.write("• Evening: 5:30 PM - 8:00 PM")
 
-# Wind every 4 hours
 st.markdown("### Wind Outlook (every 4 hours)")
 picked = pick_wind_every_4_hours(times, wind_speeds, wind_dirs)
 
-# Keep only entries that belong to the selected date in local time
 picked_same_day = []
 for t, spd, d in picked:
     if t.date() == target_date:
         picked_same_day.append((t, spd, d))
 
 if not picked_same_day:
-    # Fallback: show first 6 entries anyway
     picked_same_day = picked[:6]
 
 for t, spd, d in picked_same_day:
     d_txt = wind_dir_to_text(d)
     st.write(f"• {t.strftime('%-I:%M %p')}: {spd:.0f} mph ({d_txt})")
 
-# Quick species note (lightweight, not preachy)
 st.markdown("### Species Note")
 if species in ["Kokanee", "Rainbow trout", "Chinook", "Lake trout"]:
     st.write("• Trolling windows usually line up best with dawn and dusk. Watch wind shifts for cleaner passes.")
@@ -287,7 +312,6 @@ elif species == "Catfish":
 else:
     st.write("• Start at dawn. If action is slow, move with wind and structure until you find bait or marks.")
 
-# Static chart image
 if show_chart:
     st.markdown("### Wind Chart (image)")
     chart_buf = make_wind_chart(times, wind_speeds, f"Wind speed (mph) - {place_label}")
