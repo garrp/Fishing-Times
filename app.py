@@ -7,7 +7,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 APP_VERSION = "1.0"
-APP_TITLE = f"FishyNW Fishing Times v{APP_VERSION}"
 LOGO_FILENAME = "FishyNW-logo.png"
 
 
@@ -95,12 +94,6 @@ def clamp_dt_to_day(dt_obj: datetime, target_day: date):
 
 
 def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: date):
-    """
-    Universal fishing windows (no species):
-    - Dawn
-    - Midday
-    - Dusk
-    """
     dawn_start = sunrise - timedelta(hours=1)
     dawn_end = sunrise + timedelta(hours=1, minutes=30)
 
@@ -165,9 +158,9 @@ def make_fishing_graph(target_day, windows):
 # -----------------------------
 # UI
 # -----------------------------
-st.set_page_config(page_title=APP_TITLE, layout="centered")
+st.set_page_config(page_title="Fishing Northwest, fishing times", layout="centered")
 
-# Branding
+# Branding styles
 st.markdown(
     """
     <style>
@@ -183,6 +176,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Header (locked text)
 logo = safe_read_logo(LOGO_FILENAME)
 if logo:
     col1, col2 = st.columns([1, 4])
@@ -190,21 +184,21 @@ if logo:
         st.image(logo, width=120)
     with col2:
         st.markdown(
-            f"""
-            <h2 style="margin:0;">FishyNW Fishing Times</h2>
-            <div style="color:#6c757d;">Version {APP_VERSION}</div>
+            """
+            <h2 style="margin:0;">Fishing Northwest, fishing times</h2>
             """,
             unsafe_allow_html=True,
         )
+else:
+    st.markdown("## Fishing Northwest, fishing times")
 
 st.divider()
 
 # Sidebar
 with st.sidebar:
-    st.markdown("### FishyNW Controls")
+    st.markdown("### Controls")
 
     target_date = st.date_input("Day", date.today())
-
     lat = st.number_input("Latitude", value=47.6777, format="%.6f")
     lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
 
@@ -241,7 +235,6 @@ else:
     sunrise = parse_iso_dt(daily["sunrise"][0])
     sunset = parse_iso_dt(daily["sunset"][0])
 
-# Fishing windows
 windows = compute_fishing_windows(sunrise, sunset, target_date)
 
 st.markdown("### Best Fishing Times")
@@ -250,9 +243,8 @@ st.image(make_fishing_graph(target_date, windows), use_container_width=True)
 for label, s_dt, e_dt, _ in windows:
     st.write(f"• {label}: {s_dt.strftime('%-I:%M %p')} – {e_dt.strftime('%-I:%M %p')}")
 
-# Wind
 st.markdown("### Wind (every 2 hours)")
 for t, mph, d in wind_every_n_hours(times, speeds, dirs, target_date, 2):
     st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({d})")
 
-st.caption(f"FishyNW • v{APP_VERSION}")
+st.caption("Fishing Northwest")
