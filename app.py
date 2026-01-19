@@ -123,11 +123,12 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
 
 
 def wind_every_n_hours(times, speeds, dirs, target_day, step_hours):
+    step_hours = max(1, int(step_hours))
     out = []
     for i in range(0, len(times), step_hours):
         t = parse_iso_dt(times[i])
         if t.date() == target_day:
-            out.append((t, speeds[i], wind_dir_to_text(dirs[i])))
+            out.append((t, float(speeds[i]), wind_dir_to_text(float(dirs[i]))))
     return out
 
 
@@ -158,50 +159,52 @@ def make_fishing_graph(target_day, windows):
 # -----------------------------
 # UI
 # -----------------------------
-st.set_page_config(page_title="Fishing Northwest, fishing times", layout="centered")
+st.set_page_config(page_title="Best fishing times by location", layout="centered")
 
-# Branding styles
+# Two spaces from top margin + simple brand button
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 1rem; }
+    .block-container { padding-top: 2.5rem; } /* ~ two visual spaces */
     .stButton>button {
         background-color: #1f4fd8;
         color: white;
         font-weight: 700;
         border-radius: 8px;
+        border: 0px;
+        padding: 0.55rem 0.9rem;
+    }
+    .stButton>button:hover {
+        background-color: #163aa6;
+        color: white;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Header (locked text)
+# Header (logo optional)
 logo = safe_read_logo(LOGO_FILENAME)
 if logo:
-    col1, col2 = st.columns([1, 4])
+    col1, col2 = st.columns([1, 5])
     with col1:
         st.image(logo, width=120)
     with col2:
         st.markdown(
-            """
-            <h2 style="margin:0;">Fishing Northwest, fishing times</h2>
-            """,
+            "<h2 style='margin:0;'>Best fishing times by location</h2>",
             unsafe_allow_html=True,
         )
 else:
-    st.markdown("## Fishing Northwest, fishing times")
+    st.markdown("## Best fishing times by location")
 
 st.divider()
 
-# Sidebar
+# Sidebar controls
 with st.sidebar:
     st.markdown("### Controls")
-
     target_date = st.date_input("Day", date.today())
     lat = st.number_input("Latitude", value=47.6777, format="%.6f")
     lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
-
     submitted = st.button("Get fishing outlook", use_container_width=True)
 
 if not submitted:
@@ -211,7 +214,7 @@ st.markdown("### Location")
 st.write(f"Lat {lat:.4f}, Lon {lon:.4f}")
 
 # Weather fetch
-wx = fetch_weather(lat, lon, target_date)
+wx = fetch_weather(float(lat), float(lon), target_date)
 fallback = wx is None
 
 if fallback:
@@ -227,14 +230,24 @@ if fallback:
     sunrise = datetime(target_date.year, target_date.month, target_date.day, 6, 30)
     sunset = datetime(target_date.year, target_date.month, target_date.day, 17, 0)
 else:
-    hourly = wx["hourly"]
-    daily = wx["daily"]
-    times = hourly["time"]
-    speeds = hourly["wind_speed_10m"]
-    dirs = hourly["wind_direction_10m"]
-    sunrise = parse_iso_dt(daily["sunrise"][0])
-    sunset = parse_iso_dt(daily["sunset"][0])
+    hourly = wx.get("hourly") or {}
+    daily = wx.get("daily") or {}
 
+    times = hourly.get("time") or []
+    speeds = hourly.get("wind_speed_10m") or []
+    dirs = hourly.get("wind_direction_10m") or []
+
+    sunrise_list = daily.get("sunrise") or []
+    sunset_list = daily.get("sunset") or []
+
+    sunrise = parse_iso_dt(sunrise_list[0]) if sunrise_list else None
+    sunset = parse_iso_dt(sunset_list[0]) if sunset_list else None
+
+    if not times or not speeds or not dirs or sunrise is None or sunset is None:
+        st.warning("Weather data missing for this location/date. Try again or use a nearby location.")
+        st.stop()
+
+# Fishing windows
 windows = compute_fishing_windows(sunrise, sunset, target_date)
 
 st.markdown("### Best Fishing Times")
@@ -243,8 +256,13 @@ st.image(make_fishing_graph(target_date, windows), use_container_width=True)
 for label, s_dt, e_dt, _ in windows:
     st.write(f"• {label}: {s_dt.strftime('%-I:%M %p')} – {e_dt.strftime('%-I:%M %p')}")
 
+# Wind
 st.markdown("### Wind (every 2 hours)")
-for t, mph, d in wind_every_n_hours(times, speeds, dirs, target_date, 2):
-    st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({d})")
+wind_list = wind_every_n_hours(times, speeds, dirs, target_date, 2)
+if not wind_list:
+    st.write("• No wind data available for this date.")
+else:
+    for t, mph, d in wind_list:
+        st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({d})")
 
 st.caption("Fishing Northwest")
