@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.7 (adds phone speedometer tool)
+# Version 1.7.2 (speedometer responsive: bigger on tablets, compact on phones)
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,13 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7"
+APP_VERSION = "1.7.2"
 
-# Logo URL (per your request)
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7",
+    "User-Agent": "FishyNW-App-1.7.2",
     "Accept": "application/json",
 }
 
@@ -57,7 +56,7 @@ st.markdown(
 /* Main container */
 .block-container {
   padding-top: 2.2rem;
-  padding-bottom: 2.5rem;
+  padding-bottom: 3.2rem;
   max-width: 900px;
 }
 
@@ -488,7 +487,6 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
-    # No user input here. Only show the range.
     if lo is not None and hi is not None:
         range_txt = str(lo) + " to " + str(hi) + " F"
     else:
@@ -514,24 +512,43 @@ def render_species_tips(name, db):
 
 
 def phone_speedometer_widget():
-    # Browser GPS speed. Works best on mobile with location permission.
+    # Responsive dial sizing:
+    # - Phones: smaller dial
+    # - Tablets: larger dial
     html = """
-    <div style="padding:16px;border:1px solid rgba(248,248,232,0.20);border-radius:18px;background:rgba(248,248,232,0.06);">
-      <div style="font-weight:900;font-size:18px;margin-bottom:6px;">Phone Speedometer</div>
-      <div id="status" style="opacity:0.88;margin-bottom:10px;">Waiting for GPS permission...</div>
+    <div id="wrap" style="padding:12px;border:1px solid rgba(248,248,232,0.20);border-radius:18px;background:rgba(248,248,232,0.06);">
+      <style>
+        #wrap { --dial: 112px; --mph: 34px; --gap: 12px; }
+        @media (min-width: 720px) {
+          #wrap { --dial: 160px; --mph: 44px; --gap: 16px; }
+        }
+        .row { display:flex; align-items:center; gap: var(--gap); }
+        .dial {
+          width: var(--dial);
+          height: var(--dial);
+          border-radius: 999px;
+          border: 2px solid rgba(248,248,232,0.25);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+        }
+        .mph { font-size: var(--mph); font-weight: 900; line-height: 1.0; }
+      </style>
 
-      <div style="display:flex;align-items:center;gap:16px;">
-        <div style="width:128px;height:128px;border-radius:999px;border:2px solid rgba(248,248,232,0.25);display:flex;align-items:center;justify-content:center;">
+      <div style="font-weight:900;font-size:18px;margin-bottom:6px;">Phone Speedometer</div>
+      <div id="status" style="opacity:0.88;margin-bottom:8px;">Allow location permission...</div>
+
+      <div class="row">
+        <div class="dial">
           <div style="text-align:center;">
-            <div id="mph" style="font-size:36px;font-weight:900;">--</div>
+            <div id="mph" class="mph">--</div>
             <div style="opacity:0.85;">mph</div>
           </div>
         </div>
 
         <div style="flex:1;">
-          <div style="opacity:0.9;">This reads GPS speed from your phone browser.</div>
-          <div style="opacity:0.85;margin-top:6px;">If it shows --, start moving and wait a few seconds.</div>
-          <div id="acc" style="opacity:0.82;margin-top:10px;">Accuracy: --</div>
+          <div id="acc" style="opacity:0.82;">Accuracy: --</div>
+          <div style="opacity:0.80;margin-top:6px;">If mph is --, start moving and wait a few seconds.</div>
         </div>
       </div>
     </div>
@@ -542,21 +559,20 @@ def phone_speedometer_widget():
       if (!navigator.geolocation) {
         setText("status", "Geolocation not supported on this device/browser.");
       } else {
-        setText("status", "Requesting location...");
         navigator.geolocation.watchPosition(
           (pos) => {
-            const spd = pos.coords.speed;  // meters/sec, can be null
+            const spd = pos.coords.speed;
             const acc = pos.coords.accuracy;
 
             setText("acc", "Accuracy: " + Math.round(acc) + " m");
 
             if (spd === null || spd === undefined) {
               setText("mph", "--");
-              setText("status", "Speed not available yet. Keep moving for a few seconds.");
+              setText("status", "GPS lock... keep moving.");
               return;
             }
 
-            const mph = spd * 2.236936;  // m/s -> mph
+            const mph = spd * 2.236936;
             setText("mph", mph.toFixed(1));
             setText("status", "GPS speed (live)");
           },
@@ -568,7 +584,8 @@ def phone_speedometer_widget():
       }
     </script>
     """
-    components.html(html, height=220)
+    # Height gives room for tablet dial while still fitting phones.
+    components.html(html, height=240)
 
 # -------------------------------------------------
 # Sidebar and state
@@ -592,24 +609,12 @@ with st.sidebar:
     st.caption("Version " + APP_VERSION)
     st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
 
-    # Pretty button menu (no radio)
     for t in TOOLS:
-        is_active = (st.session_state["tool"] == t)
-
-        cols = st.columns([0.14, 0.86])
-        with cols[0]:
-            if is_active:
-                st.markdown("<div class='badge'>ON</div>", unsafe_allow_html=True)
-            else:
-                st.markdown("<div style='height:34px;'></div>", unsafe_allow_html=True)
-
-        with cols[1]:
-            if st.button(t, key="tool_btn_" + t, use_container_width=True):
-                st.session_state["tool"] = t
+        if st.button(t, key="tool_btn_" + t, use_container_width=True):
+            st.session_state["tool"] = t
 
     tool = st.session_state["tool"]
 
-    # Tool-specific sidebar controls
     if tool == "Best fishing times":
         st.divider()
         mode = st.radio("Location", ["Current location", "Place name"])
@@ -628,7 +633,7 @@ with st.sidebar:
 selected_day = st.session_state["selected_day"]
 
 # -------------------------------------------------
-# Header (logo left, title right)
+# Header
 # -------------------------------------------------
 PAGE_TITLES = {
     "Best fishing times": "Best Fishing Times",
@@ -637,6 +642,8 @@ PAGE_TITLES = {
     "Species tips": "Species Tips",
     "Speedometer": "Speedometer",
 }
+
+tool = st.session_state["tool"]
 
 st.markdown(
     "<div class='header'>"
@@ -790,14 +797,16 @@ elif tool == "Species tips":
     render_species_tips(species, db)
 
 else:
-    st.markdown("<div class='small'>Uses your phone GPS in the browser. Allow location permission.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Allow location permission. GPS speed may take a moment to appear.</div>", unsafe_allow_html=True)
     phone_speedometer_widget()
 
 # -------------------------------------------------
 # Footer
+# Do not render footer on Speedometer page (prevents interference on small screens)
 # -------------------------------------------------
-st.markdown(
-    "<div class='footer'><strong>FishyNW.com</strong><br>"
-    "Independent Northwest fishing tools</div>",
-    unsafe_allow_html=True,
-)
+if tool != "Speedometer":
+    st.markdown(
+        "<div class='footer'><strong>FishyNW.com</strong><br>"
+        "Independent Northwest fishing tools</div>",
+        unsafe_allow_html=True,
+    )
