@@ -1,16 +1,16 @@
 # app.py
-# FishyNW.com - Best Fishing Times, Trolling Depth, and Water Temp Targeting
-# Version 1.2
+# FishyNW.com - Best Fishing Times, Trolling Depth, Water Temp Targeting, and Species Tips
+# Version 1.3
 
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-Transparent.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.2",
+    "User-Agent": "FishyNW-App-1.3",
     "Accept": "application/json",
 }
 
@@ -28,11 +28,7 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-.block-container {
-  padding-top: 1.5rem;
-  padding-bottom: 2.5rem;
-  max-width: 720px;
-}
+.block-container { padding-top: 1.5rem; padding-bottom: 2.5rem; max-width: 720px; }
 section[data-testid="stSidebar"] { width: 320px; }
 .small { color: rgba(255,255,255,0.7); font-size: 0.95rem; }
 .logo { text-align: center; margin-bottom: 18px; }
@@ -46,7 +42,6 @@ section[data-testid="stSidebar"] { width: 320px; }
 }
 .card-title { font-size: 1rem; opacity: 0.85; }
 .card-value { font-size: 1.6rem; font-weight: 800; }
-.big-value { font-size: 2.2rem; font-weight: 900; letter-spacing: 0.2px; }
 .footer {
   margin-top: 40px;
   padding-top: 20px;
@@ -56,16 +51,10 @@ section[data-testid="stSidebar"] { width: 320px; }
   opacity: 0.7;
 }
 button { border-radius: 14px; }
-.tag {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.04);
-  margin: 6px 6px 0 0;
-  font-weight: 700;
-  font-size: 0.92rem;
-}
+.tip-h { font-weight: 800; margin-top: 10px; }
+.tip-p { opacity: 0.85; line-height: 1.35; }
+.bul { margin-top: 8px; }
+.bul li { margin-bottom: 6px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -166,15 +155,8 @@ def c_to_f(c):
     return (c * 9.0 / 5.0) + 32.0
 
 
-def f_to_c(f):
-    return (f - 32.0) * 5.0 / 9.0
-
-
 def temp_targets(temp_f):
-    # PNW-leaning targets. These are rule-of-thumb ranges.
-    # Returns a sorted list of (species, rating, notes)
     t = temp_f
-
     items = []
 
     def add(name, lo, hi, note):
@@ -186,20 +168,235 @@ def temp_targets(temp_f):
             rating = "Fair"
         items.append((name, rating, note))
 
-    add("Trout (rainbow/brown)", 45, 65, "Better in cool water. Focus mornings and shade when warmer.")
+    add("Trout (rainbow/brown)", 45, 65, "Cool water. Better early and in shade when warmer.")
     add("Kokanee", 42, 55, "Cool water. Often deeper when surface warms.")
     add("Chinook salmon", 44, 58, "Cool water. Often deeper and near current.")
     add("Lake trout", 42, 55, "Cold water. Usually deeper structure.")
     add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind-blown banks.")
-    add("Largemouth bass", 65, 80, "Warm water. Weeds, pads, shallow cover.")
+    add("Largemouth bass", 65, 80, "Warm water. Weeds and shallow cover.")
     add("Walleye", 55, 70, "Mid temps. Low light windows are strong.")
     add("Panfish (perch/bluegill)", 60, 80, "Warm water. Shallows and cover.")
     add("Catfish (channel)", 65, 85, "Warm water. Evening and night bites.")
 
-    # Prioritize Best, then Fair, then Low
     rank = {"Best": 0, "Fair": 1, "Low": 2}
     items.sort(key=lambda x: rank[x[1]])
     return items
+
+
+def species_tip_db():
+    # All ASCII. Practical PNW-friendly tips.
+    return {
+        "Kokanee": {
+            "Top": [
+                "Usually not a topwater fish. Focus mid-water columns."
+            ],
+            "Mid": [
+                "Troll dodger plus small hoochie or spinner behind it.",
+                "Run scent and tune speed until you get a steady rod thump.",
+                "If marks are mid column, match depth with weights or a downrigger."
+            ],
+            "Bottom": [
+                "Not a bottom target. If they are deep, still fish just above them."
+            ],
+            "Quick": [
+                "Speed is everything. Small changes can turn on the bite.",
+                "If you see fish at 35 ft, set gear at about 30 to 33 ft."
+            ],
+        },
+        "Rainbow trout": {
+            "Top": [
+                "When they are up, cast small spinners, spoons, or floating minnows.",
+                "Early morning wind lanes can be money."
+            ],
+            "Mid": [
+                "Troll small spoons, wedding rings, or spinners at 1.2 to 1.8 mph.",
+                "Use long leads if the water is clear."
+            ],
+            "Bottom": [
+                "Slow down and run a bottom bouncer or drift a bait rig near structure.",
+                "If fishing still, suspend bait just off bottom."
+            ],
+            "Quick": [
+                "If bites stop, change lure color or slow down slightly.",
+                "Follow the food: insects, fry, and edges of temperature changes."
+            ],
+        },
+        "Lake trout": {
+            "Top": [
+                "Rare topwater. Most action is deep."
+            ],
+            "Mid": [
+                "If bait is suspended, troll big spoons or tubes through the marks.",
+                "Use steady speed and wide turns to trigger strikes."
+            ],
+            "Bottom": [
+                "Work structure: humps, points, and deep breaks.",
+                "Jig heavy tubes or blade baits right on bottom, then lift and drop."
+            ],
+            "Quick": [
+                "They often sit tight to bottom. Fish within a few feet of it.",
+                "When you find one, stay on that depth and contour."
+            ],
+        },
+        "Chinook salmon": {
+            "Top": [
+                "Occasional surface activity, but most are deeper in summer."
+            ],
+            "Mid": [
+                "Troll flasher plus hoochie or spoon.",
+                "Adjust leader length until the action looks right.",
+                "Make long straight passes with gentle S turns."
+            ],
+            "Bottom": [
+                "If they are hugging bottom, run just above them to avoid snagging."
+            ],
+            "Quick": [
+                "Speed and depth control are the game.",
+                "If you get one bite, repeat that line, depth, and speed."
+            ],
+        },
+        "Smallmouth bass": {
+            "Top": [
+                "Walking baits, poppers, and small buzz baits early and late.",
+                "Wind on points can make topwater fire."
+            ],
+            "Mid": [
+                "Swimbaits, jerkbaits, and finesse plastics around rocks and shade.",
+                "Slow down on cold fronts and fish suspending baits."
+            ],
+            "Bottom": [
+                "Ned rig, tube, and drop shot on rock piles and breaks.",
+                "If you feel gravel and rock, you are in the zone."
+            ],
+            "Quick": [
+                "Follow wind. It pushes bait and turns on feeding.",
+                "If you miss one, throw a Ned or drop shot right back."
+            ],
+        },
+        "Largemouth bass": {
+            "Top": [
+                "Frog, buzz bait, or popper around weeds and shade lines.",
+                "Target calm pockets in vegetation."
+            ],
+            "Mid": [
+                "Swim jig or paddletail along weed edges.",
+                "Flip soft plastics into holes and let it fall."
+            ],
+            "Bottom": [
+                "Texas rig and jig in thick cover and along drop offs.",
+                "Slow and deliberate wins when they are pressured."
+            ],
+            "Quick": [
+                "Shade is a magnet. Docks, reeds, mats.",
+                "If the water is dirty, go louder and bigger."
+            ],
+        },
+        "Walleye": {
+            "Top": [
+                "Not common topwater, but they can come shallow at night."
+            ],
+            "Mid": [
+                "Troll crankbaits along breaks at dusk and dawn.",
+                "If they are suspended, match that depth and keep moving."
+            ],
+            "Bottom": [
+                "Jig and crawler, jig and minnow, or a blade bait near bottom.",
+                "Slow roll a bottom bouncer with a harness."
+            ],
+            "Quick": [
+                "Low light windows are best: early, late, and cloudy days.",
+                "Stay on the edge: flats to deep water transitions."
+            ],
+        },
+        "Perch": {
+            "Top": [
+                "Not a true topwater bite. You can catch them shallow though."
+            ],
+            "Mid": [
+                "Small jigs tipped with bait, slowly swum through schools.",
+                "If you find one, there are usually more."
+            ],
+            "Bottom": [
+                "Vertical jig small baits right on bottom.",
+                "Use light line and small hooks."
+            ],
+            "Quick": [
+                "Look for soft bottom near weeds and structure.",
+                "When you mark a school, hold position and pick them off."
+            ],
+        },
+        "Bluegill": {
+            "Top": [
+                "Small poppers or tiny bugs can work in summer.",
+                "Fish near cover and shade."
+            ],
+            "Mid": [
+                "Small plastics or jigs under a float.",
+                "Slow retrieves and pauses."
+            ],
+            "Bottom": [
+                "Tiny jigs and bait near the base of weeds.",
+                "Downsize when they get picky."
+            ],
+            "Quick": [
+                "If you see beds, work the edges and be gentle.",
+                "Light line and small hooks matter."
+            ],
+        },
+        "Channel catfish": {
+            "Top": [
+                "Not topwater. Focus bottom and current edges."
+            ],
+            "Mid": [
+                "Suspend bait if fish are cruising, but bottom is usually best."
+            ],
+            "Bottom": [
+                "Anchor and soak bait on scent trails: cut bait, worms, or stink bait.",
+                "Target outside bends, holes, and slow water near current.",
+                "Give it time, then reset to fresh scent."
+            ],
+            "Quick": [
+                "Night and evening are prime.",
+                "When you get a bite, let them load the rod before setting."
+            ],
+        },
+        "Trout (general)": {
+            "Top": [
+                "Cast small spoons and spinners when you see surface activity.",
+                "Work shorelines early and wind lanes mid day."
+            ],
+            "Mid": [
+                "Troll spinners and small spoons, steady speed.",
+                "Longer leads in clear water."
+            ],
+            "Bottom": [
+                "If still fishing, use a slip sinker and keep bait just off bottom.",
+                "Slow down if bites are short."
+            ],
+            "Quick": [
+                "Match hatch: insects in spring, fry later.",
+                "Cloud cover and chop can help."
+            ],
+        },
+    }
+
+
+def render_species_tips(name, db):
+    info = db.get(name)
+    if not info:
+        st.warning("No tips found.")
+        return
+
+    st.markdown("<div class='card'><div class='card-title'>Species</div><div class='card-value'>" + name + "</div></div>", unsafe_allow_html=True)
+
+    def section(title, items):
+        st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
+        st.markdown("<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>", unsafe_allow_html=True)
+
+    section("Topwater", info.get("Top", ["No tips available."]))
+    section("Mid water", info.get("Mid", ["No tips available."]))
+    section("Bottom", info.get("Bottom", ["No tips available."]))
+    section("Quick tips", info.get("Quick", ["No tips available."]))
 
 # -------------------------------------------------
 # Header
@@ -219,7 +416,7 @@ with st.sidebar:
 
     tool = st.radio(
         "Tool",
-        ["Best fishing times", "Trolling depth calculator", "Water temperature targeting"],
+        ["Best fishing times", "Trolling depth calculator", "Water temperature targeting", "Species tips"],
         label_visibility="collapsed",
     )
 
@@ -306,7 +503,7 @@ elif tool == "Trolling depth calculator":
         unsafe_allow_html=True,
     )
 
-else:
+elif tool == "Water temperature targeting":
     st.markdown("### Water temperature targeting")
     st.markdown("<div class='small'>Enter water temperature and get target species suggestions.</div>", unsafe_allow_html=True)
 
@@ -325,8 +522,6 @@ else:
     )
 
     targets = temp_targets(temp_f)
-
-    # Show top group first
     best = [x for x in targets if x[1] == "Best"]
     fair = [x for x in targets if x[1] == "Fair"]
     low = [x for x in targets if x[1] == "Low"]
@@ -366,6 +561,16 @@ else:
                 "</div>",
                 unsafe_allow_html=True,
             )
+
+else:
+    st.markdown("### Species tips")
+    st.markdown("<div class='small'>Pick a species and get practical tips by water column.</div>", unsafe_allow_html=True)
+
+    db = species_tip_db()
+    species_list = sorted(list(db.keys()))
+    species = st.selectbox("Species", species_list)
+
+    render_species_tips(species, db)
 
 # -------------------------------------------------
 # Footer
