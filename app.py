@@ -1,7 +1,9 @@
 # app.py
-# Fishing Northwest — Best Fishing Times by Location (v1.2)
-# Includes: Best fishing times + Wind (every 4 hours) + Trolling Depth Calculator
-# No city/state/zip shown in the UI. Only lat/lon are used/displayed (optional debug).
+# Fishing Northwest — Best Fishing Times by Location (BY Company Edition) v2.0
+# Mobile-first UI: larger tap targets, rounded cards, streamlined layout
+# Sections (radio): Best fishing times / Trolling depth calculator
+# Location: current (best effort), place name, or lat/lon
+# NOTE: No city/state/zip shown in UI.
 
 import math
 from datetime import datetime, timedelta, date
@@ -9,10 +11,10 @@ import requests
 import streamlit as st
 
 
-APP_VERSION = "1.2"
+APP_VERSION = "2.0 BY Company Edition"
 
 # ----------------------------
-# Page + Brand Styling
+# Page + Mobile-first Styling
 # ----------------------------
 st.set_page_config(
     page_title="Best Fishing Times by Location | Fishing Northwest",
@@ -23,48 +25,72 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-/* overall spacing */
-.block-container { padding-top: 0.6rem; padding-bottom: 1.4rem; max-width: 860px; }
-h1, h2, h3 { letter-spacing: 0.2px; }
-.small-muted { color: rgba(255,255,255,0.65); font-size: 0.95rem; }
+/* Mobile-first spacing */
+.block-container {
+  padding-top: 0.35rem;
+  padding-bottom: 1.2rem;
+  max-width: 640px;
+}
 
-/* cards */
+/* Make sidebar a bit more usable on mobile */
+section[data-testid="stSidebar"] {
+  width: 320px !important;
+}
+
+/* Typography */
+h1, h2, h3 { letter-spacing: 0.2px; }
+.small-muted { color: rgba(255,255,255,0.65); font-size: 0.95rem; line-height: 1.35; }
+
+/* Card style */
 .fn-card {
   border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.03);
-  border-radius: 16px;
+  background: rgba(255,255,255,0.035);
+  border-radius: 22px;
   padding: 14px 16px;
   margin: 10px 0px;
 }
-.fn-time { font-size: 1.05rem; opacity: 0.9; margin-bottom: 2px; }
-.fn-value { font-size: 1.55rem; font-weight: 700; }
-.fn-sub { font-size: 0.95rem; opacity: 0.7; margin-top: 6px; }
+.fn-title { font-size: 1.02rem; opacity: 0.85; margin-bottom: 4px; }
+.fn-value { font-size: 1.55rem; font-weight: 750; letter-spacing: 0.2px; }
+.fn-sub   { font-size: 0.92rem; opacity: 0.68; margin-top: 6px; }
 
-.fn-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-@media (max-width: 680px){
-  .fn-grid { grid-template-columns: 1fr; }
+/* Make buttons/toggles easier to tap */
+button[kind="primary"], button[kind="secondary"], .stButton button {
+  border-radius: 16px !important;
+  padding: 0.65rem 0.9rem !important;
 }
 
-/* footer */
-.fn-footer { margin-top: 24px; opacity: 0.55; font-size: 0.95rem; }
+/* Inputs rounded */
+div[data-baseweb="input"] > div,
+div[data-baseweb="select"] > div,
+div[data-baseweb="textarea"] > div {
+  border-radius: 16px !important;
+}
+
+/* Radio tiles feel */
+div[role="radiogroup"] label {
+  border-radius: 16px !important;
+  padding: 8px 10px !important;
+}
+
+/* Compact hr/divider */
+hr { margin: 0.6rem 0 !important; opacity: 0.25; }
+
+/* Footer */
+.fn-footer { margin-top: 18px; opacity: 0.55; font-size: 0.95rem; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# ----------------------------
-# Helpers
-# ----------------------------
 UA_HEADERS = {
-    "User-Agent": "FishingNorthwest-FishingTimesApp/1.2 (streamlit)",
+    "User-Agent": "FishingNorthwest-FishingTimesApp/2.0 (BY Company Edition) (streamlit)",
     "Accept": "application/json",
 }
 
 
+# ----------------------------
+# Helpers
+# ----------------------------
 def safe_get_json(url: str, timeout: int = 12):
     r = requests.get(url, headers=UA_HEADERS, timeout=timeout)
     r.raise_for_status()
@@ -72,11 +98,7 @@ def safe_get_json(url: str, timeout: int = 12):
 
 
 def ip_geolocate():
-    """
-    Best-effort IP geolocation.
-    We do NOT show city/state/zip in the UI.
-    Returns (lat, lon) or (None, None).
-    """
+    """Best-effort IP geolocation. Returns (lat, lon) or (None, None)."""
     try:
         data = safe_get_json("https://ipinfo.io/json", timeout=8)
         loc = data.get("loc")  # "lat,lon"
@@ -89,10 +111,7 @@ def ip_geolocate():
 
 
 def geocode_place_to_latlon(place: str):
-    """
-    Open-Meteo geocoding. Returns (lat, lon) or (None, None).
-    NOTE: We do NOT display the resolved city/state anywhere.
-    """
+    """Open-Meteo geocoding. Returns (lat, lon) or (None, None). Does not display resolved place."""
     try:
         q = place.strip()
         if not q:
@@ -111,10 +130,7 @@ def geocode_place_to_latlon(place: str):
 
 
 def get_wind_by_hour(lat: float, lon: float):
-    """
-    Returns dict like {"00:00": 3.2, "04:00": 6.1, ...} in mph.
-    Uses Open-Meteo hourly wind_speed_10m with timezone auto.
-    """
+    """Returns dict like {"00:00": 3.2, ...} in mph."""
     if lat is None or lon is None:
         return {}
 
@@ -140,27 +156,21 @@ def get_wind_by_hour(lat: float, lon: float):
                     wind[key] = round(float(s), 1)
             except Exception:
                 continue
-
         return wind
     except Exception:
         return {}
 
 
 def get_sun_times(lat: float, lon: float, day: date):
-    """
-    Returns (sunrise_dt, sunset_dt) in local timezone as naive datetimes.
-    Open-Meteo daily sunrise/sunset.
-    """
+    """Returns (sunrise_dt, sunset_dt) in local timezone as naive datetimes."""
     if lat is None or lon is None:
         return None, None
 
     start = day.isoformat()
-    end = day.isoformat()
-
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        f"&start_date={start}&end_date={end}"
+        f"&start_date={start}&end_date={start}"
         "&daily=sunrise,sunset"
         "&timezone=auto"
     )
@@ -177,10 +187,7 @@ def get_sun_times(lat: float, lon: float, day: date):
 
 
 def moon_phase_fraction(day: date):
-    """
-    Approx moon phase [0..1). 0=new, 0.5=full-ish.
-    Lightweight approximation.
-    """
+    """Approx moon phase [0..1). 0=new, 0.5=full-ish."""
     y, m, d = day.year, day.month, day.day
     if m < 3:
         y -= 1
@@ -190,25 +197,17 @@ def moon_phase_fraction(day: date):
     jd = math.floor(365.25 * (y + 4716)) + math.floor(30.6001 * (m + 1)) + d + b - 1524.5
     days_since = jd - 2451550.1
     synodic = 29.53058867
-    phase = (days_since % synodic) / synodic
-    return phase
+    return (days_since % synodic) / synodic
 
 
 def format_time(dt: datetime):
     try:
-        # Some platforms don't like %-I, so fallback safely.
         return dt.strftime("%I:%M %p").lstrip("0")
     except Exception:
         return "—"
 
 
 def build_best_fishing_times(lat: float, lon: float, day: date):
-    """
-    Simple windows:
-    - 1 hr before/after sunrise
-    - 1 hr before/after sunset
-    - Note based on moon phase near new/full
-    """
     sunrise, sunset = get_sun_times(lat, lon, day)
     if not sunrise or not sunset:
         return None
@@ -235,87 +234,67 @@ def build_best_fishing_times(lat: float, lon: float, day: date):
     }
 
 
-# ----------------------------
-# Trolling Depth Calculator (simple, practical model)
-# ----------------------------
-def calc_trolling_depth(
-    speed_mph: float,
-    weight_oz: float,
-    line_out_ft: float,
-    line_type: str,
-):
+def calc_trolling_depth(speed_mph: float, weight_oz: float, line_out_ft: float, line_type: str):
     """
-    Practical approximation for sink depth when flatline trolling with a weight.
-
-    This is NOT a physics-perfect simulator. It’s a calibrated rule-of-thumb style estimate:
-    - Depth increases with weight and line out.
-    - Depth decreases as speed increases and line drag increases.
-    - Braid has least drag, mono more, fluoro slightly less than mono.
-
-    Returns: (depth_ft, notes)
+    Flatline trolling depth estimate (rule-of-thumb).
+    Depth increases with weight and line out, decreases with speed and drag.
     """
     if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0:
         return None, "Enter positive values."
 
-    # Drag multipliers (bigger = more drag = less depth)
     drag = {
         "Braid": 1.00,
         "Fluorocarbon": 1.12,
         "Monofilament": 1.20,
     }.get(line_type, 1.10)
 
-    # Weight effectiveness: heavier = more depth
-    # Speed penalty: faster = less depth (nonlinear-ish)
-    # Using an empirical relationship that behaves well across common speeds 0.8–2.5 mph.
     speed_factor = (speed_mph ** 1.35)
-
-    # Core coefficient tuned so outputs are "in the ballpark" for common trout/kokanee trolling.
-    # You can adjust COEF if you want deeper/shallower across the board.
     COEF = 0.135
-
     depth = COEF * (weight_oz / (drag * speed_factor)) * line_out_ft
-
-    # Reasonable cap so weird inputs don't explode
     depth = max(0.0, min(depth, 250.0))
-
-    notes = "Rule-of-thumb estimate. Current, lure drag, and leader length can change depth."
-    return round(depth, 1), notes
+    return round(depth, 1), "Rule-of-thumb estimate. Current and lure drag will change depth."
 
 
 # ----------------------------
-# Header (two spaces from top margin)
+# Header (tight + mobile)
 # ----------------------------
-st.markdown("<br><br>", unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("## Best fishing times by location")
 st.markdown(
-    '<div class="small-muted">To use this app, click on the side menu bar to enter your location and generate the best fishing times.</div>',
+    '<div class="small-muted">Open the side menu to set your location and switch tools.</div>',
     unsafe_allow_html=True,
 )
 
 # ----------------------------
-# Sidebar Menu
+# Sidebar (streamlined)
 # ----------------------------
 with st.sidebar:
-    st.markdown("### Menu")
+    st.markdown("### BY Company Edition")
+    st.caption(f"Version {APP_VERSION}")
+
+    st.markdown("#### Section")
     page = st.radio(
-        "Choose a section",
+        "Section",
         ["Best fishing times", "Trolling depth calculator"],
         index=0,
         label_visibility="collapsed",
     )
 
     st.divider()
-    st.markdown("### Location")
+
+    st.markdown("#### Location")
     mode = st.radio(
-        "Choose location method",
-        ["Use current location (best effort)", "Enter a place name", "Enter latitude & longitude"],
+        "Location method",
+        ["Current location (best effort)", "Place name", "Latitude & longitude"],
         index=0,
+        label_visibility="collapsed",
     )
 
     lat = lon = None
 
-    if mode == "Use current location (best effort)":
-        if st.button("Detect my location"):
+    if mode == "Current location (best effort)":
+        # One-tap primary action
+        if st.button("Detect location", use_container_width=True):
             lat, lon = ip_geolocate()
             st.session_state["lat"] = lat
             st.session_state["lon"] = lon
@@ -324,11 +303,11 @@ with st.sidebar:
         lon = st.session_state.get("lon")
 
         if lat is None or lon is None:
-            st.caption("Tip: If detection fails, use Place name or Lat/Lon.")
+            st.caption("If this fails, use Place name or Lat/Lon.")
 
-    elif mode == "Enter a place name":
-        place = st.text_input("Place name", placeholder="Example: Coeur d'Alene")
-        if st.button("Use this place"):
+    elif mode == "Place name":
+        place = st.text_input("Place name", placeholder="Example: Fernan Lake", label_visibility="collapsed")
+        if st.button("Use place", use_container_width=True):
             lat, lon = geocode_place_to_latlon(place)
             st.session_state["lat"] = lat
             st.session_state["lon"] = lon
@@ -337,40 +316,44 @@ with st.sidebar:
         lon = st.session_state.get("lon")
 
     else:
-        lat_in = st.text_input("Latitude", placeholder="47.67")
-        lon_in = st.text_input("Longitude", placeholder="-116.78")
-        if st.button("Use these coordinates"):
+        c1, c2 = st.columns(2)
+        with c1:
+            lat_in = st.text_input("Latitude", placeholder="47.67", label_visibility="collapsed")
+        with c2:
+            lon_in = st.text_input("Longitude", placeholder="-116.78", label_visibility="collapsed")
+
+        if st.button("Use coordinates", use_container_width=True):
             try:
                 lat = float(lat_in.strip())
                 lon = float(lon_in.strip())
                 st.session_state["lat"] = lat
                 st.session_state["lon"] = lon
             except Exception:
-                st.warning("Please enter valid numbers for latitude and longitude.")
+                st.warning("Enter valid numbers for latitude and longitude.")
 
         lat = st.session_state.get("lat")
         lon = st.session_state.get("lon")
 
     st.divider()
-    st.markdown("### Day")
-    selected_day = st.date_input("Select date", value=date.today())
+
+    st.markdown("#### Date")
+    selected_day = st.date_input("Date", value=date.today(), label_visibility="collapsed")
 
     st.divider()
     show_debug = st.toggle("Show debug", value=False)
     if show_debug:
         st.write("DEBUG lat/lon:", lat, lon)
-        st.write("App version:", APP_VERSION)
 
 # ----------------------------
-# Main Content Routing
+# Guard
 # ----------------------------
 if lat is None or lon is None:
-    st.info("Enter your location in the side menu to generate fishing times, wind, and trolling depth estimates.")
+    st.info("Set your location in the side menu to continue.")
     st.markdown('<div class="fn-footer">Fishing Northwest</div>', unsafe_allow_html=True)
     st.stop()
 
 # ----------------------------
-# Page: Best Fishing Times
+# Best Fishing Times page
 # ----------------------------
 if page == "Best fishing times":
     times = build_best_fishing_times(lat, lon, selected_day)
@@ -379,17 +362,18 @@ if page == "Best fishing times":
         st.warning("Could not generate fishing times for that location. Try another method.")
     else:
         st.markdown("### Best fishing times")
+
         morning_start, morning_end = times["morning"]
         evening_start, evening_end = times["evening"]
 
         st.markdown(
             f"""
 <div class="fn-card">
-  <div class="fn-time">Morning window</div>
+  <div class="fn-title">Morning window</div>
   <div class="fn-value">{format_time(morning_start)} – {format_time(morning_end)}</div>
 </div>
 <div class="fn-card">
-  <div class="fn-time">Evening window</div>
+  <div class="fn-title">Evening window</div>
   <div class="fn-value">{format_time(evening_start)} – {format_time(evening_end)}</div>
 </div>
 <div class="small-muted">{times["note"]}</div>
@@ -397,48 +381,67 @@ if page == "Best fishing times":
             unsafe_allow_html=True,
         )
 
-    # Wind (every 4 hours)
     st.markdown("### Wind (mph)")
     wind = get_wind_by_hour(lat, lon)
 
-    display_hours = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]
-    for h in display_hours:
-        val = wind.get(h)
-        shown = f"{val} mph" if val is not None else "— mph"
-        st.markdown(
-            f"""
+    # Mobile-first: two-column grid feel (but still readable)
+    hours = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]
+    # Build rows of 2 cards
+    for i in range(0, len(hours), 2):
+        left = hours[i]
+        right = hours[i + 1] if i + 1 < len(hours) else None
+        c1, c2 = st.columns(2)
+        with c1:
+            v = wind.get(left)
+            shown = f"{v} mph" if v is not None else "— mph"
+            st.markdown(
+                f"""
 <div class="fn-card">
-  <div class="fn-time">{h}</div>
+  <div class="fn-title">{left}</div>
   <div class="fn-value">{shown}</div>
 </div>
 """,
-            unsafe_allow_html=True,
-        )
+                unsafe_allow_html=True,
+            )
+        if right:
+            with c2:
+                v = wind.get(right)
+                shown = f"{v} mph" if v is not None else "— mph"
+                st.markdown(
+                    f"""
+<div class="fn-card">
+  <div class="fn-title">{right}</div>
+  <div class="fn-value">{shown}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+        else:
+            with c2:
+                st.write("")
 
 # ----------------------------
-# Page: Trolling Depth Calculator
+# Trolling Depth page
 # ----------------------------
 else:
     st.markdown("### Trolling depth calculator")
     st.markdown(
-        '<div class="small-muted">Estimate depth based on speed, weight, line out, and line type. This is a rule-of-thumb estimate for flatline trolling (not downriggers).</div>',
+        '<div class="small-muted">Flatline trolling estimate. Enter your speed, weight, line out, and line type.</div>',
         unsafe_allow_html=True,
     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        speed_mph = st.number_input("Trolling speed (mph)", min_value=0.0, value=1.5, step=0.1)
-        weight_oz = st.number_input("Weight (oz)", min_value=0.0, value=8.0, step=0.5)
-    with col2:
-        line_out_ft = st.number_input("Line out (feet)", min_value=0.0, value=120.0, step=5.0)
-        line_type = st.selectbox("Line type", ["Braid", "Fluorocarbon", "Monofilament"], index=0)
+    # Mobile-first: stacked inputs (less side-by-side)
+    speed_mph = st.number_input("Trolling speed (mph)", min_value=0.0, value=1.5, step=0.1)
+    weight_oz = st.number_input("Weight (oz)", min_value=0.0, value=8.0, step=0.5)
+    line_out_ft = st.number_input("Line out (feet)", min_value=0.0, value=120.0, step=5.0)
+    line_type = st.radio("Line type", ["Braid", "Fluorocarbon", "Monofilament"], index=0, horizontal=True)
 
     depth, note = calc_trolling_depth(speed_mph, weight_oz, line_out_ft, line_type)
 
     st.markdown(
         f"""
 <div class="fn-card">
-  <div class="fn-time">Estimated depth</div>
+  <div class="fn-title">Estimated depth</div>
   <div class="fn-value">{depth if depth is not None else "—"} ft</div>
   <div class="fn-sub">{note}</div>
 </div>
@@ -446,30 +449,29 @@ else:
         unsafe_allow_html=True,
     )
 
-    # Quick presets section (optional but helpful)
     st.markdown("### Quick presets")
-    st.markdown(
-        '<div class="small-muted">Tap a preset and adjust line out as needed.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="small-muted">Tap one, then tweak line out.</div>', unsafe_allow_html=True)
 
-    preset_cols = st.columns(3)
-    presets = [
-        ("Kokanee", 1.3, 6.0, "Braid"),
-        ("Rainbow trout", 1.6, 4.0, "Braid"),
-        ("Deep trolling", 1.5, 8.0, "Braid"),
-    ]
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        if st.button("Kokanee", use_container_width=True):
+            st.session_state["spd"] = 1.3
+            st.session_state["wt"] = 6.0
+            st.session_state["lt"] = "Braid"
+    with p2:
+        if st.button("Trout", use_container_width=True):
+            st.session_state["spd"] = 1.6
+            st.session_state["wt"] = 4.0
+            st.session_state["lt"] = "Braid"
+    with p3:
+        if st.button("Deep", use_container_width=True):
+            st.session_state["spd"] = 1.5
+            st.session_state["wt"] = 8.0
+            st.session_state["lt"] = "Braid"
 
-    for i, (name, sp, wt, lt) in enumerate(presets):
-        with preset_cols[i]:
-            if st.button(name, use_container_width=True):
-                st.session_state["preset_speed"] = sp
-                st.session_state["preset_weight"] = wt
-                st.session_state["preset_line_type"] = lt
-
-    if "preset_speed" in st.session_state:
-        st.success(
-            f"Preset loaded. Set speed={st.session_state['preset_speed']} mph, weight={st.session_state['preset_weight']} oz, line={st.session_state['preset_line_type']}."
+    if "spd" in st.session_state:
+        st.info(
+            f"Preset loaded: speed {st.session_state['spd']} mph, weight {st.session_state['wt']} oz, line {st.session_state['lt']}."
         )
 
 st.markdown('<div class="fn-footer">Fishing Northwest</div>', unsafe_allow_html=True)
