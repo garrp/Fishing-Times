@@ -43,6 +43,9 @@ st.markdown(
   --primary: #184840;
   --primary2: #104840;
   --accent: #688858;
+  --btn_bg: rgba(248,248,232,0.06);
+  --btn_bg_hover: rgba(248,248,232,0.10);
+  --btn_active: rgba(104,136,88,0.22);
 }
 
 /* App background */
@@ -76,6 +79,26 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   color: var(--menu_muted) !important;
 }
 
+/* Sidebar menu buttons */
+section[data-testid="stSidebar"] .stButton > button {
+  width: 100% !important;
+  text-align: left !important;
+  background-color: var(--btn_bg) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  padding: 10px 12px !important;
+  font-weight: 800 !important;
+}
+section[data-testid="stSidebar"] .stButton > button:hover {
+  background-color: var(--btn_bg_hover) !important;
+}
+
+/* Active menu button helper class */
+.menu-active {
+  border: 1px solid rgba(104,136,88,0.65) !important;
+  background-color: var(--btn_active) !important;
+}
+
 /* Header: logo left (smaller) and title right, lowered */
 .header {
   display: flex;
@@ -91,7 +114,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   gap: 14px;
 }
 .header-logo img {
-  max-width: 130px;   /* about 50% smaller than original */
+  max-width: 130px;
   width: 100%;
   height: auto;
   display: block;
@@ -125,7 +148,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   padding: 14px 16px !important;
 }
 
-/* Buttons */
+/* Buttons (main area) */
 button { border-radius: 14px; }
 .stButton > button {
   background-color: var(--primary);
@@ -234,6 +257,7 @@ def get_wind(lat, lon):
         return out
     except Exception:
         return {}
+    return {}
 
 
 def best_times(lat, lon, day_obj):
@@ -255,6 +279,7 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     test_ratio = line_test_lb / 20.0
     test_drag = test_ratio ** 0.35
     total_drag = type_drag * test_drag
+
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
@@ -498,19 +523,42 @@ def render_species_tips(name, db):
 # -------------------------------------------------
 # Sidebar and state
 # -------------------------------------------------
+TOOLS = [
+    "Best fishing times",
+    "Trolling depth calculator",
+    "Water temperature targeting",
+    "Species tips",
+]
+
+if "tool" not in st.session_state:
+    st.session_state["tool"] = TOOLS[0]
+
 if "selected_day" not in st.session_state:
     st.session_state["selected_day"] = date.today()
 
 with st.sidebar:
     st.markdown("### FishyNW Tools")
     st.caption("Version " + APP_VERSION)
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
 
-    tool = st.radio(
-        "Tool",
-        ["Best fishing times", "Trolling depth calculator", "Water temperature targeting", "Species tips"],
-        label_visibility="collapsed",
-    )
+    # Pretty button menu (no radio)
+    for t in TOOLS:
+        is_active = (st.session_state["tool"] == t)
 
+        if is_active:
+            st.markdown("<div class='menu-active'>", unsafe_allow_html=True)
+
+        clicked = st.button(t, key="tool_btn_" + t, use_container_width=True)
+
+        if is_active:
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        if clicked:
+            st.session_state["tool"] = t
+
+    tool = st.session_state["tool"]
+
+    # Tool-specific sidebar controls
     if tool == "Best fishing times":
         st.divider()
         mode = st.radio("Location", ["Current location", "Place name"])
