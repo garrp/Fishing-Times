@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Best Fishing Times, Trolling Depth, Water Temp Targeting, and Species Tips
-# Version 1.6
+# Version 1.6 (FishyNW palette applied)
 
 from datetime import datetime, timedelta, date
 import requests
@@ -23,47 +23,90 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Styles (ASCII SAFE)
+# Styles (FishyNW palette + ASCII SAFE)
 # -------------------------------------------------
 st.markdown(
     """
 <style>
+/* FishyNW palette (from logo) */
+:root{
+  --bg: #061A18;                 /* dark water */
+  --card: rgba(16,64,56,0.35);   /* based on #104038 */
+  --border: rgba(248,248,232,0.16);
+
+  --text: #F8F8E8;               /* warm off-white */
+  --muted: rgba(248,248,232,0.72);
+
+  --primary: #184840;            /* teal */
+  --primary2: #104840;           /* teal alt */
+  --accent: #688858;             /* pine */
+}
+
+/* Page + container */
+.stApp { background: var(--bg); color: var(--text); }
 .block-container { padding-top: 1.5rem; padding-bottom: 2.5rem; max-width: 720px; }
-section[data-testid="stSidebar"] { width: 320px; }
-.small { color: rgba(255,255,255,0.7); font-size: 0.95rem; }
+
+/* Sidebar */
+section[data-testid="stSidebar"] { width: 320px; background: rgba(0,0,0,0.18); }
+
+/* Text helpers */
+.small { color: var(--muted); font-size: 0.95rem; }
 .logo { text-align: center; margin-bottom: 18px; }
 .logo img { max-width: 260px; width: 70%; }
+
+/* Cards */
 .card {
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  background: var(--card);
   border-radius: 18px;
   padding: 16px;
   margin-top: 14px;
 }
 .card-title { font-size: 1rem; opacity: 0.85; }
 .card-value { font-size: 1.6rem; font-weight: 800; }
+
+/* Footer */
 .footer {
   margin-top: 40px;
   padding-top: 20px;
-  border-top: 1px solid rgba(255,255,255,0.15);
+  border-top: 1px solid var(--border);
   text-align: center;
   font-size: 0.95rem;
-  opacity: 0.7;
+  opacity: 0.8;
 }
+
+/* Buttons (best effort; Streamlit DOM may vary by version) */
 button { border-radius: 14px; }
+.stButton > button{
+  background: var(--primary);
+  color: var(--text);
+  border: 1px solid rgba(248,248,232,0.22);
+  border-radius: 14px;
+}
+.stButton > button:hover{
+  background: var(--primary2);
+}
+
+/* Tips sections */
 .tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
 .bul li { margin-bottom: 6px; }
+
+/* Badge */
 .badge {
   display: inline-block;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  background: rgba(104,136,88,0.16); /* accent tint */
   margin: 6px 6px 0 0;
   font-weight: 800;
   font-size: 0.92rem;
 }
+
+/* Streamlit widgets: try to keep on-brand */
+hr { border-color: var(--border) !important; }
+[data-testid="stCaptionContainer"] { color: var(--muted) !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -387,7 +430,10 @@ def render_species_tips(name, db):
     )
 
     st.markdown("#### Activity temperature")
-    st.markdown("<div class='small'>Enter water temp to see if this species is in its best range.</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='small'>Enter water temp to see if this species is in its best range.</div>",
+        unsafe_allow_html=True,
+    )
     temp_f = st.number_input("Water temp (F) for this species", value=58.0, step=0.5)
 
     rating = temp_rating(temp_f, lo, hi) if lo is not None else "Unknown"
@@ -404,7 +450,10 @@ def render_species_tips(name, db):
 
     def section(title, items):
         st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
-        st.markdown("<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>", unsafe_allow_html=True)
+        st.markdown(
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>",
+            unsafe_allow_html=True,
+        )
 
     section("Topwater", info.get("Top", ["No tips available."]))
     section("Mid water", info.get("Mid", ["No tips available."]))
@@ -499,7 +548,6 @@ elif tool == "Trolling depth calculator":
     st.markdown("### Trolling depth calculator")
     st.markdown("<div class='small'>Location not required.</div>", unsafe_allow_html=True)
 
-    # Defaults updated per your request:
     speed = st.number_input("Speed (mph)", 0.0, value=1.3, step=0.1)
     weight = st.number_input("Weight (oz)", 0.0, value=2.0, step=0.5)
     line_out = st.number_input("Line out (feet)", 0.0, value=100.0, step=5.0)
@@ -598,3 +646,4 @@ st.markdown(
     "Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
+```0
