@@ -1,8 +1,4 @@
-# requirements.txt  (Streamlit Cloud compatible)
-streamlit>=1.35
+streamlit>=1.31
 requests>=2.31
-pytz>=2024.1
-astral>=3.2
-ephem
 matplotlib>=3.8
-```0
+urllib3>=2.0
