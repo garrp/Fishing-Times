@@ -1,19 +1,19 @@
 # app.py
-# FishyNW.com - Fishing Tools
-# Version 1.7.2 (speedometer responsive: bigger on tablets, compact on phones)
-# ASCII ONLY. No Unicode. No smart quotes. No special dashes.
+# FishyNW.com - Best Fishing Times, Trolling Depth, Water Temp Targeting, Species Tips, and Speedometer
+# Version 1.7
 
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7.2"
+APP_VERSION = "1.7"
 
+# New logo (user provided)
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7.2",
+    "User-Agent": "FishyNW-App-1.7",
     "Accept": "application/json",
 }
 
@@ -26,114 +26,101 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
+# Branding colors (adjust if you want slightly different)
+# -------------------------------------------------
+CREAM_TEXT = "#f6f2e7"
+SIDEBAR_BG = "#071b1f"
+SIDEBAR_BORDER = "rgba(246,242,231,0.14)"
+CARD_BG = "rgba(246,242,231,0.05)"
+CARD_BORDER = "rgba(246,242,231,0.14)"
+GREEN_BTN = "#6fbf4a"         # light green (website-like)
+GREEN_BTN_HOVER = "#63ad41"
+
+# -------------------------------------------------
 # Styles (ASCII SAFE)
 # -------------------------------------------------
 st.markdown(
     """
 <style>
-:root {
-  --bg: #061a18;
-  --sidebar: #041412;
-  --card: #0b2a26;
-  --border: rgba(248,248,232,0.20);
-  --text: #f8f8e8;
-  --muted: rgba(248,248,232,0.75);
-  --menu_text: rgba(248,248,232,0.96);
-  --menu_muted: rgba(248,248,232,0.82);
-  --primary: #184840;
-  --primary2: #104840;
-  --accent: #688858;
-  --btn_bg: rgba(248,248,232,0.06);
-  --btn_bg_hover: rgba(248,248,232,0.10);
-}
-
-/* App background */
-.stApp {
-  background-color: var(--bg);
-  color: var(--text);
-}
-
-/* Main container */
+/* Layout */
 .block-container {
-  padding-top: 2.2rem;
-  padding-bottom: 3.2rem;
-  max-width: 900px;
+  padding-top: 1.15rem;
+  padding-bottom: 3.25rem;  /* extra bottom space so footer never crowds content */
+  max-width: 720px;
 }
+section[data-testid="stSidebar"] { width: 320px; }
 
-/* Sidebar: force solid background (not transparent) */
-section[data-testid="stSidebar"] {
-  background-color: var(--sidebar) !important;
-  width: 320px;
-  border-right: 1px solid var(--border);
-}
+/* Sidebar background (not transparent) */
 section[data-testid="stSidebar"] > div {
-  background-color: var(--sidebar) !important;
+  background: """ + SIDEBAR_BG + """;
+  border-right: 1px solid """ + SIDEBAR_BORDER + """;
 }
 
-/* Sidebar text contrast */
-section[data-testid="stSidebar"] * {
-  color: var(--menu_text) !important;
-}
-section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
-  color: var(--menu_muted) !important;
+/* Text colors - make sidebar menu legible */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] div {
+  color: """ + CREAM_TEXT + """;
 }
 
-/* Sidebar menu buttons (full width, left aligned) */
+/* Buttons */
+button { border-radius: 14px; }
 section[data-testid="stSidebar"] .stButton > button {
-  width: 100% !important;
-  text-align: left !important;
-  background-color: var(--btn_bg) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 14px !important;
-  padding: 10px 12px !important;
-  font-weight: 800 !important;
+  width: 100%;
+  border: 1px solid """ + SIDEBAR_BORDER + """;
+  background: rgba(246,242,231,0.06);
+  color: """ + CREAM_TEXT + """;
+  font-weight: 800;
 }
 section[data-testid="stSidebar"] .stButton > button:hover {
-  background-color: var(--btn_bg_hover) !important;
+  background: rgba(246,242,231,0.10);
 }
 
-/* Header: logo left (smaller) and title right, lowered */
-.header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 18px;
-  margin-bottom: 10px;
+/* Primary (we use this for "Display Best Fishing Times") */
+section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+  background: """ + GREEN_BTN + """ !important;
+  border: 1px solid rgba(0,0,0,0.12) !important;
+  color: #0b1a12 !important;
 }
-.header-left {
+section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+  background: """ + GREEN_BTN_HOVER + """ !important;
+}
+
+/* Header row: logo left, title right */
+.header-row {
   display: flex;
-  align-items: flex-end;
-  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;   /* lower the header so logo is fully visible */
+  margin-bottom: 6px;
 }
 .header-logo img {
-  max-width: 130px;
+  max-width: 130px;   /* about 50% smaller vs old 260 */
   width: 100%;
   height: auto;
   display: block;
 }
 .header-title {
-  font-size: 1.55rem;
-  font-weight: 800;
-  line-height: 1.1;
-  padding-bottom: 6px;
+  text-align: right;
+  font-weight: 900;
+  font-size: 1.15rem;
+  line-height: 1.25rem;
+  color: """ + CREAM_TEXT + """;
 }
-
-.small {
-  color: var(--muted);
-  font-size: 0.95rem;
-}
+.small { color: rgba(246,242,231,0.78); font-size: 0.95rem; }
 
 /* Cards */
 .card {
-  border: 1px solid var(--border);
-  background-color: var(--card);
+  border: 1px solid """ + CARD_BORDER + """;
+  background: """ + CARD_BG + """;
   border-radius: 18px;
   padding: 16px;
   margin-top: 14px;
 }
-.card-title { font-size: 1rem; opacity: 0.85; }
-.card-value { font-size: 1.6rem; font-weight: 800; }
+.card-title { font-size: 1rem; opacity: 0.88; color: """ + CREAM_TEXT + """; }
+.card-value { font-size: 1.6rem; font-weight: 900; color: """ + CREAM_TEXT + """; }
 
 /* Compact cards for fishing times only */
 .compact-card {
@@ -141,42 +128,33 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   padding: 14px 16px !important;
 }
 
-/* Buttons (main area) */
-button { border-radius: 14px; }
-.stButton > button {
-  background-color: var(--primary);
-  color: var(--text) !important;
-  border: 1px solid rgba(248,248,232,0.22);
-}
-.stButton > button:hover {
-  background-color: var(--primary2);
-}
-
-/* Tips */
-.tip-h { font-weight: 800; margin-top: 10px; }
+/* Lists */
+.tip-h { font-weight: 900; margin-top: 10px; color: """ + CREAM_TEXT + """; }
 .bul { margin-top: 8px; }
-.bul li { margin-bottom: 6px; }
+.bul li { margin-bottom: 6px; color: """ + CREAM_TEXT + """; }
 
 /* Badge */
 .badge {
   display: inline-block;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(104,136,88,0.16);
+  border: 1px solid """ + SIDEBAR_BORDER + """;
+  background: rgba(246,242,231,0.05);
   margin: 6px 6px 0 0;
-  font-weight: 800;
+  font-weight: 900;
   font-size: 0.92rem;
+  color: """ + CREAM_TEXT + """;
 }
 
 /* Footer */
 .footer {
-  margin-top: 40px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid """ + SIDEBAR_BORDER + """;
   text-align: center;
   font-size: 0.95rem;
-  opacity: 0.8;
+  opacity: 0.78;
+  color: """ + CREAM_TEXT + """;
 }
 </style>
 """,
@@ -191,7 +169,6 @@ def get_json(url, timeout=10):
     r.raise_for_status()
     return r.json()
 
-
 def get_location():
     try:
         data = get_json("https://ipinfo.io/json", 6)
@@ -203,18 +180,19 @@ def get_location():
     except Exception:
         return None, None
 
-
 def geocode_place(name):
     try:
-        url = "https://geocoding-api.open-meteo.com/v1/search?name=" + name + "&count=1&format=json"
-        data = get_json(url, 10)
+        url = (
+            "https://geocoding-api.open-meteo.com/v1/search"
+            "?name=" + name + "&count=1&format=json"
+        )
+        data = get_json(url)
         res = data.get("results")
         if not res:
             return None, None
         return res[0]["latitude"], res[0]["longitude"]
     except Exception:
         return None, None
-
 
 def get_sun_times(lat, lon, day_iso):
     url = (
@@ -226,13 +204,12 @@ def get_sun_times(lat, lon, day_iso):
         "&daily=sunrise,sunset&timezone=auto"
     )
     try:
-        data = get_json(url, 10)
+        data = get_json(url)
         sr = data["daily"]["sunrise"][0]
         ss = data["daily"]["sunset"][0]
         return datetime.fromisoformat(sr), datetime.fromisoformat(ss)
     except Exception:
         return None, None
-
 
 def get_wind(lat, lon):
     url = (
@@ -242,7 +219,7 @@ def get_wind(lat, lon):
         "&hourly=wind_speed_10m&wind_speed_unit=mph&timezone=auto"
     )
     try:
-        data = get_json(url, 10)
+        data = get_json(url)
         out = {}
         for t, s in zip(data["hourly"]["time"], data["hourly"]["wind_speed_10m"]):
             hour = datetime.fromisoformat(t).strftime("%H:00")
@@ -250,7 +227,6 @@ def get_wind(lat, lon):
         return out
     except Exception:
         return {}
-
 
 def best_times(lat, lon, day_obj):
     day_iso = day_obj.isoformat()
@@ -261,7 +237,6 @@ def best_times(lat, lon, day_obj):
         "morning": (sr - timedelta(hours=1), sr + timedelta(hours=1)),
         "evening": (ss - timedelta(hours=1), ss + timedelta(hours=1)),
     }
-
 
 def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0 or line_test_lb <= 0:
@@ -275,10 +250,8 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
-
 def c_to_f(c):
     return (c * 9.0 / 5.0) + 32.0
-
 
 def temp_rating(temp_f, lo, hi):
     if lo <= temp_f <= hi:
@@ -286,7 +259,6 @@ def temp_rating(temp_f, lo, hi):
     if (lo - 5) <= temp_f < lo or hi < temp_f <= (hi + 5):
         return "Fair"
     return "Low"
-
 
 def temp_targets(temp_f):
     t = temp_f
@@ -300,7 +272,7 @@ def temp_targets(temp_f):
     add("Kokanee", 42, 55, "Cool water. Often deeper when surface warms.")
     add("Chinook salmon", 44, 58, "Cool water. Often deeper and near current.")
     add("Lake trout", 42, 55, "Cold water. Usually deeper structure.")
-    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind blown banks.")
+    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind-blown banks.")
     add("Largemouth bass", 65, 80, "Warm water. Weeds and shallow cover.")
     add("Walleye", 55, 70, "Mid temps. Low light windows are strong.")
     add("Panfish (perch/bluegill)", 60, 80, "Warm water. Shallows and cover.")
@@ -310,9 +282,138 @@ def temp_targets(temp_f):
     items.sort(key=lambda x: rank[x[1]])
     return items
 
-
 def species_tip_db():
     return {
+        "Kokanee": {
+            "temp_f": (42, 55),
+            "Top": ["Usually not a topwater fish. Focus mid-water columns."],
+            "Mid": [
+                "Troll dodger plus small hoochie or spinner behind it.",
+                "Run scent and tune speed until you get a steady rod thump.",
+                "If marks are mid column, match depth with weights or a downrigger."
+            ],
+            "Bottom": ["Not a bottom target. If they are deep, still fish just above them."],
+            "Quick": [
+                "Speed is everything. Small changes can turn on the bite.",
+                "If you see fish at 35 ft, set gear at about 30 to 33 ft."
+            ],
+        },
+        "Rainbow trout": {
+            "temp_f": (45, 65),
+            "Top": [
+                "When they are up, cast small spinners, spoons, or floating minnows.",
+                "Early morning wind lanes can be strong."
+            ],
+            "Mid": [
+                "Troll small spoons or spinners at 1.2 to 1.8 mph.",
+                "Use longer leads if the water is clear."
+            ],
+            "Bottom": ["Still fish bait just off bottom near structure or drop-offs."],
+            "Quick": [
+                "If bites stop, change lure color or adjust speed slightly.",
+                "Follow food and temperature changes."
+            ],
+        },
+        "Lake trout": {
+            "temp_f": (42, 55),
+            "Top": ["Rare topwater. Most action is deep."],
+            "Mid": [
+                "If bait is suspended, troll big spoons or tubes through the marks.",
+                "Wide turns often trigger strikes."
+            ],
+            "Bottom": [
+                "Work structure: humps, points, deep breaks.",
+                "Jig heavy tubes or blade baits on bottom, then lift and drop."
+            ],
+            "Quick": [
+                "Often tight to bottom. Fish within a few feet of it.",
+                "When you find one, stay on that contour."
+            ],
+        },
+        "Chinook salmon": {
+            "temp_f": (44, 58),
+            "Top": ["Occasional surface activity, but most are deeper in summer."],
+            "Mid": [
+                "Troll flasher plus hoochie or spoon.",
+                "Adjust leader length until action looks right.",
+                "Make long straight passes with gentle S turns."
+            ],
+            "Bottom": ["If hugging bottom, run just above them to avoid snagging."],
+            "Quick": [
+                "Speed and depth control are the game.",
+                "Repeat the depth and speed that got your bite."
+            ],
+        },
+        "Smallmouth bass": {
+            "temp_f": (60, 75),
+            "Top": [
+                "Walking baits, poppers early and late.",
+                "Wind on points can make topwater fire."
+            ],
+            "Mid": [
+                "Swimbaits, jerkbaits, finesse plastics around rocks and shade.",
+                "Slow down on cold fronts."
+            ],
+            "Bottom": [
+                "Ned rig, tube, drop shot on rock and breaks.",
+                "If you feel rock and gravel, you are in the zone."
+            ],
+            "Quick": [
+                "Follow wind. It pushes bait and turns on feeding.",
+                "After a miss, throw a Ned or drop shot back."
+            ],
+        },
+        "Largemouth bass": {
+            "temp_f": (65, 80),
+            "Top": [
+                "Frog, buzz bait, popper around weeds and shade lines.",
+                "Target calm pockets in vegetation."
+            ],
+            "Mid": [
+                "Swim jig or paddletail along weed edges.",
+                "Flip soft plastics into holes and let it fall."
+            ],
+            "Bottom": [
+                "Texas rig and jig in thick cover and along drop offs.",
+                "Slow down when pressured."
+            ],
+            "Quick": [
+                "Shade is a magnet: docks, reeds, mats.",
+                "Dirty water: go louder and bigger."
+            ],
+        },
+        "Walleye": {
+            "temp_f": (55, 70),
+            "Top": ["Not common topwater, but they can come shallow at night."],
+            "Mid": [
+                "Troll crankbaits along breaks at dusk and dawn.",
+                "If suspended, match that depth and keep moving."
+            ],
+            "Bottom": [
+                "Jig and crawler or blade bait near bottom.",
+                "Bottom bouncer with harness on edges."
+            ],
+            "Quick": [
+                "Low light is best: early, late, cloudy.",
+                "Stay on transitions: flats to deep breaks."
+            ],
+        },
+        "Perch": {
+            "temp_f": (55, 75),
+            "Top": ["Not a true topwater bite. You can catch them shallow though."],
+            "Mid": [
+                "Small jigs tipped with bait, slowly swum through schools.",
+                "If you find one, there are usually more."
+            ],
+            "Bottom": [
+                "Vertical jig small baits on bottom.",
+                "Use light line and small hooks."
+            ],
+            "Quick": [
+                "Soft bottom near weeds can be good.",
+                "When you mark a school, hold position and pick them off."
+            ],
+        },
         "Bluegill": {
             "temp_f": (65, 80),
             "Top": ["Tiny poppers can work in summer near shade and cover."],
@@ -327,123 +428,9 @@ def species_tip_db():
             "Bottom": [
                 "Soak bait on scent trails: cut bait, worms, stink bait.",
                 "Target holes, outside bends, slow water near current.",
-                "Reset to fresh bait if it goes quiet.",
+                "Reset to fresh bait if it goes quiet."
             ],
             "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
-        },
-        "Chinook salmon": {
-            "temp_f": (44, 58),
-            "Top": ["Occasional surface activity, but most are deeper in summer."],
-            "Mid": [
-                "Troll flasher plus hoochie or spoon.",
-                "Adjust leader length until action looks right.",
-                "Make long straight passes with gentle S turns.",
-            ],
-            "Bottom": ["If hugging bottom, run just above them to avoid snagging."],
-            "Quick": [
-                "Speed and depth control are the game.",
-                "Repeat the depth and speed that got your bite.",
-            ],
-        },
-        "Kokanee": {
-            "temp_f": (42, 55),
-            "Top": ["Usually not a topwater fish. Focus mid water columns."],
-            "Mid": [
-                "Troll dodger plus small hoochie or spinner behind it.",
-                "Run scent and tune speed until you get a steady rod thump.",
-                "If marks are mid column, match depth with weights or a downrigger.",
-            ],
-            "Bottom": ["Not a bottom target. If they are deep, still fish just above them."],
-            "Quick": [
-                "Speed is everything. Small changes can turn on the bite.",
-                "If you see fish at 35 ft, set gear at about 30 to 33 ft.",
-            ],
-        },
-        "Lake trout": {
-            "temp_f": (42, 55),
-            "Top": ["Rare topwater. Most action is deep."],
-            "Mid": [
-                "If bait is suspended, troll big spoons or tubes through the marks.",
-                "Wide turns often trigger strikes.",
-            ],
-            "Bottom": [
-                "Work structure: humps, points, deep breaks.",
-                "Jig heavy tubes or blade baits on bottom, then lift and drop.",
-            ],
-            "Quick": [
-                "Often tight to bottom. Fish within a few feet of it.",
-                "When you find one, stay on that contour.",
-            ],
-        },
-        "Largemouth bass": {
-            "temp_f": (65, 80),
-            "Top": [
-                "Frog, buzz bait, popper around weeds and shade lines.",
-                "Target calm pockets in vegetation.",
-            ],
-            "Mid": [
-                "Swim jig or paddletail along weed edges.",
-                "Flip soft plastics into holes and let it fall.",
-            ],
-            "Bottom": [
-                "Texas rig and jig in thick cover and along drop offs.",
-                "Slow down when pressured.",
-            ],
-            "Quick": [
-                "Shade is a magnet: docks, reeds, mats.",
-                "Dirty water: go louder and bigger.",
-            ],
-        },
-        "Perch": {
-            "temp_f": (55, 75),
-            "Top": ["Not a true topwater bite. You can catch them shallow though."],
-            "Mid": [
-                "Small jigs tipped with bait, slowly swum through schools.",
-                "If you find one, there are usually more.",
-            ],
-            "Bottom": [
-                "Vertical jig small baits on bottom.",
-                "Use light line and small hooks.",
-            ],
-            "Quick": [
-                "Soft bottom near weeds can be good.",
-                "When you mark a school, hold position and pick them off.",
-            ],
-        },
-        "Rainbow trout": {
-            "temp_f": (45, 65),
-            "Top": [
-                "When they are up, cast small spinners, spoons, or floating minnows.",
-                "Early morning wind lanes can be strong.",
-            ],
-            "Mid": [
-                "Troll small spoons or spinners at 1.2 to 1.8 mph.",
-                "Use longer leads if the water is clear.",
-            ],
-            "Bottom": ["Still fish bait just off bottom near structure or drop offs."],
-            "Quick": [
-                "If bites stop, change lure color or adjust speed slightly.",
-                "Follow food and temperature changes.",
-            ],
-        },
-        "Smallmouth bass": {
-            "temp_f": (60, 75),
-            "Top": [
-                "Walking baits, poppers early and late.",
-                "Wind on points can make topwater fire.",
-            ],
-            "Mid": [
-                "Swimbaits, jerkbaits, finesse plastics around rocks and shade.",
-                "Slow down on cold fronts.",
-            ],
-            "Bottom": [
-                "Ned rig, tube, drop shot on rock and breaks.",
-                "If you feel rock and gravel, you are in the zone.",
-            ],
-            "Quick": [
-                "Follow wind. It pushes bait and turns on feeding.",
-                "After a miss, throw a Ned or drop shot back.",
-            ],
         },
         "Trout (general)": {
             "temp_f": (45, 65),
@@ -452,24 +439,7 @@ def species_tip_db():
             "Bottom": ["Slip sinker and keep bait just off bottom. Slow down if bites are short."],
             "Quick": ["Match hatch. Cloud cover and chop can help."],
         },
-        "Walleye": {
-            "temp_f": (55, 70),
-            "Top": ["Not common topwater, but they can come shallow at night."],
-            "Mid": [
-                "Troll crankbaits along breaks at dusk and dawn.",
-                "If suspended, match that depth and keep moving.",
-            ],
-            "Bottom": [
-                "Jig and crawler or blade bait near bottom.",
-                "Bottom bouncer with harness on edges.",
-            ],
-            "Quick": [
-                "Low light is best: early, late, cloudy.",
-                "Stay on transitions: flats to deep breaks.",
-            ],
-        },
     }
-
 
 def render_species_tips(name, db):
     info = db.get(name)
@@ -488,18 +458,16 @@ def render_species_tips(name, db):
     )
 
     if lo is not None and hi is not None:
-        range_txt = str(lo) + " to " + str(hi) + " F"
-    else:
-        range_txt = "Unknown"
-
-    st.markdown(
-        "<div class='card'>"
-        "<div class='card-title'>Most active water temperature range</div>"
-        "<div class='card-value'>" + range_txt + "</div>"
-        "<div style='margin-top:10px;'><span class='badge'>Range</span></div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Most active water temperature range</div>"
+            "<div class='card-value'>" + str(lo) + " to " + str(hi) + " F</div>"
+            "<div style='margin-top:10px;'>"
+            "<span class='badge'>Range only</span>"
+            "</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
     def section(title, items):
         st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
@@ -510,73 +478,54 @@ def render_species_tips(name, db):
     section("Bottom", info.get("Bottom", ["No tips available."]))
     section("Quick tips", info.get("Quick", ["No tips available."]))
 
-
-def phone_speedometer_widget():
-    # Responsive dial sizing:
-    # - Phones: smaller dial
-    # - Tablets: larger dial
+def phone_speedometer_compact():
+    # Compact so it fits on screen and does not feel crowded by footer
     html = """
-    <div id="wrap" style="padding:12px;border:1px solid rgba(248,248,232,0.20);border-radius:18px;background:rgba(248,248,232,0.06);">
-      <style>
-        #wrap { --dial: 112px; --mph: 34px; --gap: 12px; }
-        @media (min-width: 720px) {
-          #wrap { --dial: 160px; --mph: 44px; --gap: 16px; }
-        }
-        .row { display:flex; align-items:center; gap: var(--gap); }
-        .dial {
-          width: var(--dial);
-          height: var(--dial);
-          border-radius: 999px;
-          border: 2px solid rgba(248,248,232,0.25);
-          display:flex;
-          align-items:center;
-          justify-content:center;
-        }
-        .mph { font-size: var(--mph); font-weight: 900; line-height: 1.0; }
-      </style>
+    <div style="padding:12px;border:1px solid rgba(246,242,231,0.16);border-radius:18px;background:rgba(246,242,231,0.05);">
+      <div style="font-weight:900;font-size:18px;margin-bottom:8px;color:#f6f2e7;">Speedometer</div>
 
-      <div style="font-weight:900;font-size:18px;margin-bottom:6px;">Phone Speedometer</div>
-      <div id="status" style="opacity:0.88;margin-bottom:8px;">Allow location permission...</div>
-
-      <div class="row">
-        <div class="dial">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:108px;height:108px;border-radius:999px;border:2px solid rgba(246,242,231,0.22);display:flex;align-items:center;justify-content:center;">
           <div style="text-align:center;">
-            <div id="mph" class="mph">--</div>
-            <div style="opacity:0.85;">mph</div>
+            <div id="mph" style="font-size:32px;font-weight:900;color:#f6f2e7;">--</div>
+            <div style="opacity:0.85;color:#f6f2e7;">mph</div>
           </div>
         </div>
 
         <div style="flex:1;">
-          <div id="acc" style="opacity:0.82;">Accuracy: --</div>
-          <div style="opacity:0.80;margin-top:6px;">If mph is --, start moving and wait a few seconds.</div>
+          <div id="status" style="opacity:0.88;color:#f6f2e7;">Requesting GPS...</div>
+          <div id="acc" style="opacity:0.78;margin-top:6px;color:#f6f2e7;">Accuracy: --</div>
         </div>
       </div>
     </div>
 
     <script>
-      function setText(id, txt){ document.getElementById(id).textContent = txt; }
+      function setText(id, txt){
+        var el = document.getElementById(id);
+        if (el) el.textContent = txt;
+      }
 
       if (!navigator.geolocation) {
-        setText("status", "Geolocation not supported on this device/browser.");
+        setText("status", "Geolocation not supported.");
       } else {
         navigator.geolocation.watchPosition(
-          (pos) => {
-            const spd = pos.coords.speed;
-            const acc = pos.coords.accuracy;
+          function(pos) {
+            var spd = pos.coords.speed; // meters/sec, may be null
+            var acc = pos.coords.accuracy;
 
             setText("acc", "Accuracy: " + Math.round(acc) + " m");
 
             if (spd === null || spd === undefined) {
               setText("mph", "--");
-              setText("status", "GPS lock... keep moving.");
+              setText("status", "Speed not ready. Move a bit.");
               return;
             }
 
-            const mph = spd * 2.236936;
+            var mph = spd * 2.236936;
             setText("mph", mph.toFixed(1));
             setText("status", "GPS speed (live)");
           },
-          (err) => {
+          function(err) {
             setText("status", "Location error: " + err.message);
           },
           { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 }
@@ -584,57 +533,20 @@ def phone_speedometer_widget():
       }
     </script>
     """
-    # Height gives room for tablet dial while still fitting phones.
-    components.html(html, height=240)
+    components.html(html, height=155)
 
 # -------------------------------------------------
-# Sidebar and state
+# Session defaults
 # -------------------------------------------------
-TOOLS = [
-    "Best fishing times",
-    "Trolling depth calculator",
-    "Water temperature targeting",
-    "Species tips",
-    "Speedometer",
-]
-
 if "tool" not in st.session_state:
-    st.session_state["tool"] = TOOLS[0]
+    st.session_state["tool"] = "Best fishing times"
+if "loc_mode" not in st.session_state:
+    st.session_state["loc_mode"] = "Current location"
+if "lat" not in st.session_state:
+    st.session_state["lat"] = None
+if "lon" not in st.session_state:
+    st.session_state["lon"] = None
 
-if "selected_day" not in st.session_state:
-    st.session_state["selected_day"] = date.today()
-
-with st.sidebar:
-    st.markdown("### FishyNW Tools")
-    st.caption("Version " + APP_VERSION)
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-
-    for t in TOOLS:
-        if st.button(t, key="tool_btn_" + t, use_container_width=True):
-            st.session_state["tool"] = t
-
-    tool = st.session_state["tool"]
-
-    if tool == "Best fishing times":
-        st.divider()
-        mode = st.radio("Location", ["Current location", "Place name"])
-
-        if mode == "Current location":
-            if st.button("Use current location", use_container_width=True):
-                st.session_state["lat"], st.session_state["lon"] = get_location()
-        else:
-            place = st.text_input("Place name", placeholder="Example: Fernan Lake")
-            if st.button("Use place", use_container_width=True):
-                st.session_state["lat"], st.session_state["lon"] = geocode_place(place)
-
-        st.divider()
-        st.session_state["selected_day"] = st.date_input("Date", value=st.session_state["selected_day"])
-
-selected_day = st.session_state["selected_day"]
-
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
 PAGE_TITLES = {
     "Best fishing times": "Best Fishing Times",
     "Trolling depth calculator": "Trolling Depth Calculator",
@@ -643,16 +555,67 @@ PAGE_TITLES = {
     "Speedometer": "Speedometer",
 }
 
+# -------------------------------------------------
+# Sidebar (pretty buttons, no radios)
+# -------------------------------------------------
+with st.sidebar:
+    st.markdown("### FishyNW Tools")
+    st.caption("Version " + APP_VERSION)
+
+    def nav_button(label, target):
+        if st.button(label, use_container_width=True, key="nav_" + target):
+            st.session_state["tool"] = target
+
+    nav_button("Best fishing times", "Best fishing times")
+    nav_button("Trolling depth calculator", "Trolling depth calculator")
+    nav_button("Water temperature targeting", "Water temperature targeting")
+    nav_button("Species tips", "Species tips")
+    nav_button("Speedometer", "Speedometer")
+
+    tool = st.session_state["tool"]
+
+    if tool == "Best fishing times":
+        st.divider()
+        st.markdown("#### Location")
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Current location", use_container_width=True, key="loc_mode_current"):
+                st.session_state["loc_mode"] = "Current location"
+        with col_b:
+            if st.button("Place name", use_container_width=True, key="loc_mode_place"):
+                st.session_state["loc_mode"] = "Place name"
+
+        mode = st.session_state["loc_mode"]
+
+        if mode == "Current location":
+            if st.button(
+                "Display Best Fishing Times",
+                use_container_width=True,
+                type="primary",
+                key="btn_display_best_times",
+            ):
+                st.session_state["lat"], st.session_state["lon"] = get_location()
+        else:
+            place = st.text_input("Place name", placeholder="Example: Fernan Lake", key="place_name_input")
+            if st.button("Use place", use_container_width=True, key="btn_use_place"):
+                st.session_state["lat"], st.session_state["lon"] = geocode_place(place)
+
+        st.divider()
+        selected_day = st.date_input("Date", value=date.today(), key="day_input")
+
+# -------------------------------------------------
+# Header row (logo left, title right)
+# -------------------------------------------------
 tool = st.session_state["tool"]
+page_title = PAGE_TITLES.get(tool, "FishyNW Tools")
 
 st.markdown(
-    "<div class='header'>"
-    "<div class='header-left'>"
+    "<div class='header-row'>"
     "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
+    "<div class='header-title'>" + page_title + "</div>"
     "</div>"
-    "<div class='header-title'>" + PAGE_TITLES.get(tool, "") + "</div>"
-    "</div>"
-    "<div class='small'>Independent Northwest fishing tools</div>",
+    "<div class='small' style='text-align:left;'>Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
 
@@ -683,8 +646,6 @@ if tool == "Best fishing times":
                 unsafe_allow_html=True,
             )
 
-            st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
-
             st.markdown(
                 "<div class='card compact-card'><div class='card-title'>Evening window</div>"
                 "<div class='card-value'>" +
@@ -695,9 +656,7 @@ if tool == "Best fishing times":
                 unsafe_allow_html=True,
             )
 
-            st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='small'>Wind (mph) every 4 hours</div>", unsafe_allow_html=True)
-
+            st.markdown("### Wind (mph)")
             wind = get_wind(lat, lon)
             for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
                 st.markdown(
@@ -708,6 +667,7 @@ if tool == "Best fishing times":
                 )
 
 elif tool == "Trolling depth calculator":
+    st.markdown("### Trolling depth calculator")
     st.markdown("<div class='small'>Location not required.</div>", unsafe_allow_html=True)
 
     speed = st.number_input("Speed (mph)", 0.0, value=1.3, step=0.1)
@@ -732,6 +692,7 @@ elif tool == "Trolling depth calculator":
     )
 
 elif tool == "Water temperature targeting":
+    st.markdown("### Water temperature targeting")
     st.markdown("<div class='small'>Enter water temperature and get target species suggestions.</div>", unsafe_allow_html=True)
 
     unit = st.radio("Units", ["F", "C"], horizontal=True)
@@ -754,7 +715,7 @@ elif tool == "Water temperature targeting":
     low = [x for x in targets if x[1] == "Low"]
 
     if best:
-        st.markdown("<div class='small'>Best targets</div>", unsafe_allow_html=True)
+        st.markdown("#### Best targets")
         for name, rating, note in best:
             st.markdown(
                 "<div class='card'>"
@@ -766,7 +727,7 @@ elif tool == "Water temperature targeting":
             )
 
     if fair:
-        st.markdown("<div class='small'>Fair targets</div>", unsafe_allow_html=True)
+        st.markdown("#### Fair targets")
         for name, rating, note in fair:
             st.markdown(
                 "<div class='card'>"
@@ -778,7 +739,7 @@ elif tool == "Water temperature targeting":
             )
 
     if low and not best:
-        st.markdown("<div class='small'>Low targets</div>", unsafe_allow_html=True)
+        st.markdown("#### Low targets")
         for name, rating, note in low[:4]:
             st.markdown(
                 "<div class='card'>"
@@ -790,23 +751,25 @@ elif tool == "Water temperature targeting":
             )
 
 elif tool == "Species tips":
-    st.markdown("<div class='small'>Pick a species and get tips plus ideal range.</div>", unsafe_allow_html=True)
+    st.markdown("### Species tips")
+    st.markdown("<div class='small'>Pick a species and get tips plus its best activity temperature range.</div>", unsafe_allow_html=True)
+
     db = species_tip_db()
     species_list = sorted(list(db.keys()))
     species = st.selectbox("Species", species_list)
+
     render_species_tips(species, db)
 
 else:
-    st.markdown("<div class='small'>Allow location permission. GPS speed may take a moment to appear.</div>", unsafe_allow_html=True)
-    phone_speedometer_widget()
+    st.markdown("### Speedometer")
+    st.markdown("<div class='small'>GPS speed from your phone browser. Works best once GPS has a lock and you are moving.</div>", unsafe_allow_html=True)
+    phone_speedometer_compact()
 
 # -------------------------------------------------
 # Footer
-# Do not render footer on Speedometer page (prevents interference on small screens)
 # -------------------------------------------------
-if tool != "Speedometer":
-    st.markdown(
-        "<div class='footer'><strong>FishyNW.com</strong><br>"
-        "Independent Northwest fishing tools</div>",
-        unsafe_allow_html=True,
-    )
+st.markdown(
+    "<div class='footer'><strong>FishyNW.com</strong><br>"
+    "Independent Northwest fishing tools</div>",
+    unsafe_allow_html=True,
+)
