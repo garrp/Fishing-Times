@@ -47,7 +47,7 @@ st.markdown(
 
 /* Main container */
 .block-container {
-  padding-top: 2.6rem;   /* lowers header area */
+  padding-top: 2.6rem;
   padding-bottom: 2.5rem;
   max-width: 900px;
 }
@@ -70,7 +70,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   color: var(--menu_muted) !important;
 }
 
-/* Header: logo left (smaller) and title right, lowered */
+/* Header: logo left and title right, lowered */
 .header {
   display: flex;
   align-items: flex-end;
@@ -103,6 +103,12 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
 }
 .card-title { font-size: 1rem; opacity: 0.85; }
 .card-value { font-size: 1.6rem; font-weight: 800; }
+
+/* Compact cards for fishing times only */
+.compact-card {
+  margin-top: 8px !important;
+  padding: 14px 16px !important;
+}
 
 /* Buttons */
 button { border-radius: 14px; }
@@ -486,6 +492,8 @@ with st.sidebar:
 
     if tool == "Best fishing times":
         st.divider()
+        mode���
+
         mode = st.radio("Location", ["Current location", "Place name"])
 
         if mode == "Current location":
@@ -534,7 +542,7 @@ if tool == "Best fishing times":
             e0, e1 = times["evening"]
 
             st.markdown(
-                "<div class='card'><div class='card-title'>Morning window</div>"
+                "<div class='card compact-card'><div class='card-title'>Morning window</div>"
                 "<div class='card-value'>" +
                 m0.strftime("%I:%M %p").lstrip("0") +
                 " - " +
@@ -543,8 +551,10 @@ if tool == "Best fishing times":
                 unsafe_allow_html=True,
             )
 
+            st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
+
             st.markdown(
-                "<div class='card'><div class='card-title'>Evening window</div>"
+                "<div class='card compact-card'><div class='card-title'>Evening window</div>"
                 "<div class='card-value'>" +
                 e0.strftime("%I:%M %p").lstrip("0") +
                 " - " +
@@ -553,13 +563,13 @@ if tool == "Best fishing times":
                 unsafe_allow_html=True,
             )
 
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
             st.markdown("<div class='small'>Wind (mph) every 4 hours</div>", unsafe_allow_html=True)
 
             wind = get_wind(lat, lon)
             for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
                 st.markdown(
-                    "<div class='card'><div class='card-title'>" + h +
+                    "<div class='card compact-card'><div class='card-title'>" + h +
                     "</div><div class='card-value'>" +
                     str(wind.get(h, "--")) + " mph</div></div>",
                     unsafe_allow_html=True,
