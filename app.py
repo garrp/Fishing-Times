@@ -1,16 +1,17 @@
 # app.py
-# FishyNW.com - Best Fishing Times and Trolling Tools
-# Version 1.0 (Fixed and Stable)
+# FishyNW.com - Best Fishing Times, Trolling Depth, and Speedometer
+# Version 1.1
 
 from datetime import datetime, timedelta, date
+import math
 import requests
 import streamlit as st
 
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-Transparent.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.0",
+    "User-Agent": "FishyNW-App-1.1",
     "Accept": "application/json",
 }
 
@@ -18,7 +19,7 @@ HEADERS = {
 # Page config
 # -------------------------------------------------
 st.set_page_config(
-    page_title="FishyNW.com | Best Fishing Times",
+    page_title="FishyNW.com | Fishing Tools",
     layout="centered",
 )
 
@@ -46,6 +47,7 @@ section[data-testid="stSidebar"] { width: 320px; }
 }
 .card-title { font-size: 1rem; opacity: 0.85; }
 .card-value { font-size: 1.6rem; font-weight: 800; }
+.big-value { font-size: 2.2rem; font-weight: 900; letter-spacing: 0.2px; }
 .footer {
   margin-top: 40px;
   padding-top: 20px;
@@ -130,6 +132,7 @@ def get_wind(lat, lon):
         return out
     except Exception:
         return {}
+    return {}
 
 
 def best_times(lat, lon, day_obj):
@@ -150,6 +153,18 @@ def trolling_depth(speed, weight, line_out, line_type):
     depth = 0.135 * (weight / (drag * (speed ** 1.35))) * line_out
     return round(depth, 1)
 
+
+def mph_to_fps(mph):
+    return mph * 5280.0 / 3600.0
+
+
+def format_mph(v):
+    try:
+        return f"{float(v):.2f}"
+    except Exception:
+        return "--"
+
+
 # -------------------------------------------------
 # Header
 # -------------------------------------------------
@@ -168,10 +183,11 @@ with st.sidebar:
 
     tool = st.radio(
         "Tool",
-        ["Best fishing times", "Trolling depth calculator"],
+        ["Best fishing times", "Trolling depth calculator", "Speedometer"],
         label_visibility="collapsed",
     )
 
+    # Location inputs ONLY when location matters
     if tool == "Best fishing times":
         st.divider()
         mode = st.radio("Location", ["Current location", "Place name"])
@@ -234,7 +250,7 @@ if tool == "Best fishing times":
                     unsafe_allow_html=True,
                 )
 
-else:
+elif tool == "Trolling depth calculator":
     st.markdown("### Trolling depth calculator")
     st.markdown("<div class='small'>Location not required.</div>", unsafe_allow_html=True)
 
@@ -248,9 +264,65 @@ else:
     st.markdown(
         "<div class='card'><div class='card-title'>Estimated depth</div>"
         "<div class='card-value'>" +
-        (str(depth) if depth else "--") + " ft</div></div>",
+        (str(depth) if depth is not None else "--") + " ft</div>"
+        "<div class='small' style='margin-top:8px;'>Rule of thumb. Current and lure drag affect results.</div>"
+        "</div>",
         unsafe_allow_html=True,
     )
+
+else:
+    st.markdown("### Speedometer")
+    st.markdown("<div class='small'>Enter your current speed to display a large readout.</div>", unsafe_allow_html=True)
+
+    speed_mode = st.radio("Mode", ["Manual speed", "Cadence helper"], horizontal=True)
+
+    if speed_mode == "Manual speed":
+        spd = st.number_input("Speed (mph)", 0.0, value=1.50, step=0.05)
+
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Current speed</div>"
+            "<div class='big-value'>" + format_mph(spd) + " mph</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Trolling target</div>"
+            "<div class='card-value'>1.2 to 1.8 mph</div>"
+            "<div class='small' style='margin-top:8px;'>Most trolling stays in this range. Dial it in for your lure and depth.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    else:
+        st.markdown("<div class='small'>This helps you hold a steady pace by matching a rhythm.</div>", unsafe_allow_html=True)
+
+        method = st.radio("Drive type", ["Pedal (RPM)", "Paddle (strokes per minute)"], horizontal=True)
+
+        if method == "Pedal (RPM)":
+            rpm = st.number_input("Pedal cadence (RPM)", 0.0, value=45.0, step=1.0)
+            mph_est = rpm * 0.03
+            st.markdown(
+                "<div class='card'>"
+                "<div class='card-title'>Estimated speed</div>"
+                "<div class='big-value'>" + format_mph(mph_est) + " mph</div>"
+                "<div class='small' style='margin-top:8px;'>This is a rough estimate. Calibrate it one time using GPS, then keep the same RPM.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            spm = st.number_input("Strokes per minute", 0.0, value=30.0, step=1.0)
+            mph_est = spm * 0.04
+            st.markdown(
+                "<div class='card'>"
+                "<div class='card-title'>Estimated speed</div>"
+                "<div class='big-value'>" + format_mph(mph_est) + " mph</div>"
+                "<div class='small' style='margin-top:8px;'>Rough estimate. Calibrate once, then keep your rhythm steady.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
 # -------------------------------------------------
 # Footer
