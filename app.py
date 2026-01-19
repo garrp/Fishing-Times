@@ -1,19 +1,20 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.6
+# Version 1.7 (adds phone speedometer tool)
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
-APP_VERSION = "1.6"
+APP_VERSION = "1.7"
 
-# Updated logo URL (per your request)
+# Logo URL (per your request)
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.6",
+    "User-Agent": "FishyNW-App-1.7",
     "Accept": "application/json",
 }
 
@@ -45,7 +46,6 @@ st.markdown(
   --accent: #688858;
   --btn_bg: rgba(248,248,232,0.06);
   --btn_bg_hover: rgba(248,248,232,0.10);
-  --btn_active: rgba(104,136,88,0.22);
 }
 
 /* App background */
@@ -79,7 +79,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   color: var(--menu_muted) !important;
 }
 
-/* Sidebar menu buttons */
+/* Sidebar menu buttons (full width, left aligned) */
 section[data-testid="stSidebar"] .stButton > button {
   width: 100% !important;
   text-align: left !important;
@@ -91,12 +91,6 @@ section[data-testid="stSidebar"] .stButton > button {
 }
 section[data-testid="stSidebar"] .stButton > button:hover {
   background-color: var(--btn_bg_hover) !important;
-}
-
-/* Active menu button helper class */
-.menu-active {
-  border: 1px solid rgba(104,136,88,0.65) !important;
-  background-color: var(--btn_active) !important;
 }
 
 /* Header: logo left (smaller) and title right, lowered */
@@ -257,7 +251,6 @@ def get_wind(lat, lon):
         return out
     except Exception:
         return {}
-    return {}
 
 
 def best_times(lat, lon, day_obj):
@@ -308,7 +301,7 @@ def temp_targets(temp_f):
     add("Kokanee", 42, 55, "Cool water. Often deeper when surface warms.")
     add("Chinook salmon", 44, 58, "Cool water. Often deeper and near current.")
     add("Lake trout", 42, 55, "Cold water. Usually deeper structure.")
-    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind-blown banks.")
+    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind blown banks.")
     add("Largemouth bass", 65, 80, "Warm water. Weeds and shallow cover.")
     add("Walleye", 55, 70, "Mid temps. Low light windows are strong.")
     add("Panfish (perch/bluegill)", 60, 80, "Warm water. Shallows and cover.")
@@ -321,6 +314,38 @@ def temp_targets(temp_f):
 
 def species_tip_db():
     return {
+        "Bluegill": {
+            "temp_f": (65, 80),
+            "Top": ["Tiny poppers can work in summer near shade and cover."],
+            "Mid": ["Small jigs under a float with slow retrieves and pauses."],
+            "Bottom": ["Tiny jigs and bait near the base of weeds. Downsize when picky."],
+            "Quick": ["Beds: fish edges gently. Light line and small hooks matter."],
+        },
+        "Channel catfish": {
+            "temp_f": (65, 85),
+            "Top": ["Not topwater. Focus bottom and current edges."],
+            "Mid": ["Suspend bait only if you know they are cruising. Bottom is usually best."],
+            "Bottom": [
+                "Soak bait on scent trails: cut bait, worms, stink bait.",
+                "Target holes, outside bends, slow water near current.",
+                "Reset to fresh bait if it goes quiet.",
+            ],
+            "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
+        },
+        "Chinook salmon": {
+            "temp_f": (44, 58),
+            "Top": ["Occasional surface activity, but most are deeper in summer."],
+            "Mid": [
+                "Troll flasher plus hoochie or spoon.",
+                "Adjust leader length until action looks right.",
+                "Make long straight passes with gentle S turns.",
+            ],
+            "Bottom": ["If hugging bottom, run just above them to avoid snagging."],
+            "Quick": [
+                "Speed and depth control are the game.",
+                "Repeat the depth and speed that got your bite.",
+            ],
+        },
         "Kokanee": {
             "temp_f": (42, 55),
             "Top": ["Usually not a topwater fish. Focus mid water columns."],
@@ -333,22 +358,6 @@ def species_tip_db():
             "Quick": [
                 "Speed is everything. Small changes can turn on the bite.",
                 "If you see fish at 35 ft, set gear at about 30 to 33 ft.",
-            ],
-        },
-        "Rainbow trout": {
-            "temp_f": (45, 65),
-            "Top": [
-                "When they are up, cast small spinners, spoons, or floating minnows.",
-                "Early morning wind lanes can be strong.",
-            ],
-            "Mid": [
-                "Troll small spoons or spinners at 1.2 to 1.8 mph.",
-                "Use longer leads if the water is clear.",
-            ],
-            "Bottom": ["Still fish bait just off bottom near structure or drop offs."],
-            "Quick": [
-                "If bites stop, change lure color or adjust speed slightly.",
-                "Follow food and temperature changes.",
             ],
         },
         "Lake trout": {
@@ -365,39 +374,6 @@ def species_tip_db():
             "Quick": [
                 "Often tight to bottom. Fish within a few feet of it.",
                 "When you find one, stay on that contour.",
-            ],
-        },
-        "Chinook salmon": {
-            "temp_f": (44, 58),
-            "Top": ["Occasional surface activity, but most are deeper in summer."],
-            "Mid": [
-                "Troll flasher plus hoochie or spoon.",
-                "Adjust leader length until action looks right.",
-                "Make long straight passes with gentle S turns.",
-            ],
-            "Bottom": ["If hugging bottom, run just above them to avoid snagging."],
-            "Quick": [
-                "Speed and depth control are the game.",
-                "Repeat the depth and speed that got your bite.",
-            ],
-        },
-        "Smallmouth bass": {
-            "temp_f": (60, 75),
-            "Top": [
-                "Walking baits, poppers early and late.",
-                "Wind on points can make topwater fire.",
-            ],
-            "Mid": [
-                "Swimbaits, jerkbaits, finesse plastics around rocks and shade.",
-                "Slow down on cold fronts.",
-            ],
-            "Bottom": [
-                "Ned rig, tube, drop shot on rock and breaks.",
-                "If you feel rock and gravel, you are in the zone.",
-            ],
-            "Quick": [
-                "Follow wind. It pushes bait and turns on feeding.",
-                "After a miss, throw a Ned or drop shot back.",
             ],
         },
         "Largemouth bass": {
@@ -419,22 +395,6 @@ def species_tip_db():
                 "Dirty water: go louder and bigger.",
             ],
         },
-        "Walleye": {
-            "temp_f": (55, 70),
-            "Top": ["Not common topwater, but they can come shallow at night."],
-            "Mid": [
-                "Troll crankbaits along breaks at dusk and dawn.",
-                "If suspended, match that depth and keep moving.",
-            ],
-            "Bottom": [
-                "Jig and crawler or blade bait near bottom.",
-                "Bottom bouncer with harness on edges.",
-            ],
-            "Quick": [
-                "Low light is best: early, late, cloudy.",
-                "Stay on transitions: flats to deep breaks.",
-            ],
-        },
         "Perch": {
             "temp_f": (55, 75),
             "Top": ["Not a true topwater bite. You can catch them shallow though."],
@@ -451,23 +411,40 @@ def species_tip_db():
                 "When you mark a school, hold position and pick them off.",
             ],
         },
-        "Bluegill": {
-            "temp_f": (65, 80),
-            "Top": ["Tiny poppers can work in summer near shade and cover."],
-            "Mid": ["Small jigs under a float with slow retrieves and pauses."],
-            "Bottom": ["Tiny jigs and bait near the base of weeds. Downsize when picky."],
-            "Quick": ["Beds: fish edges gently. Light line and small hooks matter."],
-        },
-        "Channel catfish": {
-            "temp_f": (65, 85),
-            "Top": ["Not topwater. Focus bottom and current edges."],
-            "Mid": ["Suspend bait only if you know they are cruising. Bottom is usually best."],
-            "Bottom": [
-                "Soak bait on scent trails: cut bait, worms, stink bait.",
-                "Target holes, outside bends, slow water near current.",
-                "Reset to fresh bait if it goes quiet.",
+        "Rainbow trout": {
+            "temp_f": (45, 65),
+            "Top": [
+                "When they are up, cast small spinners, spoons, or floating minnows.",
+                "Early morning wind lanes can be strong.",
             ],
-            "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
+            "Mid": [
+                "Troll small spoons or spinners at 1.2 to 1.8 mph.",
+                "Use longer leads if the water is clear.",
+            ],
+            "Bottom": ["Still fish bait just off bottom near structure or drop offs."],
+            "Quick": [
+                "If bites stop, change lure color or adjust speed slightly.",
+                "Follow food and temperature changes.",
+            ],
+        },
+        "Smallmouth bass": {
+            "temp_f": (60, 75),
+            "Top": [
+                "Walking baits, poppers early and late.",
+                "Wind on points can make topwater fire.",
+            ],
+            "Mid": [
+                "Swimbaits, jerkbaits, finesse plastics around rocks and shade.",
+                "Slow down on cold fronts.",
+            ],
+            "Bottom": [
+                "Ned rig, tube, drop shot on rock and breaks.",
+                "If you feel rock and gravel, you are in the zone.",
+            ],
+            "Quick": [
+                "Follow wind. It pushes bait and turns on feeding.",
+                "After a miss, throw a Ned or drop shot back.",
+            ],
         },
         "Trout (general)": {
             "temp_f": (45, 65),
@@ -475,6 +452,22 @@ def species_tip_db():
             "Mid": ["Troll spinners and small spoons at steady speed. Longer leads in clear water."],
             "Bottom": ["Slip sinker and keep bait just off bottom. Slow down if bites are short."],
             "Quick": ["Match hatch. Cloud cover and chop can help."],
+        },
+        "Walleye": {
+            "temp_f": (55, 70),
+            "Top": ["Not common topwater, but they can come shallow at night."],
+            "Mid": [
+                "Troll crankbaits along breaks at dusk and dawn.",
+                "If suspended, match that depth and keep moving.",
+            ],
+            "Bottom": [
+                "Jig and crawler or blade bait near bottom.",
+                "Bottom bouncer with harness on edges.",
+            ],
+            "Quick": [
+                "Low light is best: early, late, cloudy.",
+                "Stay on transitions: flats to deep breaks.",
+            ],
         },
     }
 
@@ -495,7 +488,7 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
-    # NO USER INPUT HERE. Only show the range.
+    # No user input here. Only show the range.
     if lo is not None and hi is not None:
         range_txt = str(lo) + " to " + str(hi) + " F"
     else:
@@ -520,6 +513,63 @@ def render_species_tips(name, db):
     section("Quick tips", info.get("Quick", ["No tips available."]))
 
 
+def phone_speedometer_widget():
+    # Browser GPS speed. Works best on mobile with location permission.
+    html = """
+    <div style="padding:16px;border:1px solid rgba(248,248,232,0.20);border-radius:18px;background:rgba(248,248,232,0.06);">
+      <div style="font-weight:900;font-size:18px;margin-bottom:6px;">Phone Speedometer</div>
+      <div id="status" style="opacity:0.88;margin-bottom:10px;">Waiting for GPS permission...</div>
+
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="width:128px;height:128px;border-radius:999px;border:2px solid rgba(248,248,232,0.25);display:flex;align-items:center;justify-content:center;">
+          <div style="text-align:center;">
+            <div id="mph" style="font-size:36px;font-weight:900;">--</div>
+            <div style="opacity:0.85;">mph</div>
+          </div>
+        </div>
+
+        <div style="flex:1;">
+          <div style="opacity:0.9;">This reads GPS speed from your phone browser.</div>
+          <div style="opacity:0.85;margin-top:6px;">If it shows --, start moving and wait a few seconds.</div>
+          <div id="acc" style="opacity:0.82;margin-top:10px;">Accuracy: --</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function setText(id, txt){ document.getElementById(id).textContent = txt; }
+
+      if (!navigator.geolocation) {
+        setText("status", "Geolocation not supported on this device/browser.");
+      } else {
+        setText("status", "Requesting location...");
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            const spd = pos.coords.speed;  // meters/sec, can be null
+            const acc = pos.coords.accuracy;
+
+            setText("acc", "Accuracy: " + Math.round(acc) + " m");
+
+            if (spd === null || spd === undefined) {
+              setText("mph", "--");
+              setText("status", "Speed not available yet. Keep moving for a few seconds.");
+              return;
+            }
+
+            const mph = spd * 2.236936;  // m/s -> mph
+            setText("mph", mph.toFixed(1));
+            setText("status", "GPS speed (live)");
+          },
+          (err) => {
+            setText("status", "Location error: " + err.message);
+          },
+          { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 }
+        );
+      }
+    </script>
+    """
+    components.html(html, height=220)
+
 # -------------------------------------------------
 # Sidebar and state
 # -------------------------------------------------
@@ -528,6 +578,7 @@ TOOLS = [
     "Trolling depth calculator",
     "Water temperature targeting",
     "Species tips",
+    "Speedometer",
 ]
 
 if "tool" not in st.session_state:
@@ -545,16 +596,16 @@ with st.sidebar:
     for t in TOOLS:
         is_active = (st.session_state["tool"] == t)
 
-        if is_active:
-            st.markdown("<div class='menu-active'>", unsafe_allow_html=True)
+        cols = st.columns([0.14, 0.86])
+        with cols[0]:
+            if is_active:
+                st.markdown("<div class='badge'>ON</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div style='height:34px;'></div>", unsafe_allow_html=True)
 
-        clicked = st.button(t, key="tool_btn_" + t, use_container_width=True)
-
-        if is_active:
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        if clicked:
-            st.session_state["tool"] = t
+        with cols[1]:
+            if st.button(t, key="tool_btn_" + t, use_container_width=True):
+                st.session_state["tool"] = t
 
     tool = st.session_state["tool"]
 
@@ -584,6 +635,7 @@ PAGE_TITLES = {
     "Trolling depth calculator": "Trolling Depth Calculator",
     "Water temperature targeting": "Water Temperature Targeting",
     "Species tips": "Species Tips",
+    "Speedometer": "Speedometer",
 }
 
 st.markdown(
@@ -730,14 +782,16 @@ elif tool == "Water temperature targeting":
                 unsafe_allow_html=True,
             )
 
-else:
+elif tool == "Species tips":
     st.markdown("<div class='small'>Pick a species and get tips plus ideal range.</div>", unsafe_allow_html=True)
-
     db = species_tip_db()
     species_list = sorted(list(db.keys()))
     species = st.selectbox("Species", species_list)
-
     render_species_tips(species, db)
+
+else:
+    st.markdown("<div class='small'>Uses your phone GPS in the browser. Allow location permission.</div>", unsafe_allow_html=True)
+    phone_speedometer_widget()
 
 # -------------------------------------------------
 # Footer
@@ -747,3 +801,4 @@ st.markdown(
     "Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
+```0
