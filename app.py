@@ -1,16 +1,16 @@
 # app.py
-# FishyNW.com - Best Fishing Times, Trolling Depth, and Direction Indicator
-# Version 1.1
+# FishyNW.com - Best Fishing Times, Trolling Depth, and Water Temp Targeting
+# Version 1.2
 
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-Transparent.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.1",
+    "User-Agent": "FishyNW-App-1.2",
     "Accept": "application/json",
 }
 
@@ -56,65 +56,15 @@ section[data-testid="stSidebar"] { width: 320px; }
   opacity: 0.7;
 }
 button { border-radius: 14px; }
-
-/* Simple compass circle */
-.compass-wrap {
-  display: flex;
-  justify-content: center;
-  margin-top: 10px;
-}
-.compass {
-  width: 260px;
-  height: 260px;
+.tag {
+  display: inline-block;
+  padding: 6px 10px;
   border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.03);
-  position: relative;
-}
-.compass .tick {
-  position: absolute;
-  left: 50%;
-  top: 8px;
-  transform: translateX(-50%);
-  font-weight: 800;
-  opacity: 0.75;
-}
-.compass .needle {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 0;
-  height: 0;
-  transform-origin: 50% 90%;
-}
-.compass .needle:before {
-  content: "";
-  position: absolute;
-  left: -6px;
-  top: -110px;
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 110px solid rgba(255,255,255,0.85);
-}
-.compass .center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  background: rgba(255,255,255,0.85);
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-}
-.compass-labels {
-  display: flex;
-  justify-content: space-between;
-  width: 260px;
-  margin: 10px auto 0 auto;
-  opacity: 0.75;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.04);
+  margin: 6px 6px 0 0;
   font-weight: 700;
+  font-size: 0.92rem;
 }
 </style>
 """,
@@ -212,29 +162,44 @@ def trolling_depth(speed, weight, line_out, line_type):
     return round(depth, 1)
 
 
-def heading_to_cardinal(deg):
-    # 0=N, 90=E, 180=S, 270=W
-    deg = deg % 360
-    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
-    idx = int((deg + 22.5) // 45) % 8
-    return dirs[idx]
+def c_to_f(c):
+    return (c * 9.0 / 5.0) + 32.0
 
 
-def angle_diff(a, b):
-    # smallest diff between headings (0-180)
-    d = abs((a - b) % 360)
-    return min(d, 360 - d)
+def f_to_c(f):
+    return (f - 32.0) * 5.0 / 9.0
 
 
-def wind_relation(heading, wind_from):
-    # wind_from is direction wind is coming FROM.
-    # into-wind means your heading is toward wind_from.
-    diff = angle_diff(heading, wind_from)
-    if diff <= 25:
-        return "Into the wind"
-    if diff >= 155:
-        return "With the wind"
-    return "Crosswind"
+def temp_targets(temp_f):
+    # PNW-leaning targets. These are rule-of-thumb ranges.
+    # Returns a sorted list of (species, rating, notes)
+    t = temp_f
+
+    items = []
+
+    def add(name, lo, hi, note):
+        if t < lo - 5 or t > hi + 5:
+            rating = "Low"
+        elif lo <= t <= hi:
+            rating = "Best"
+        else:
+            rating = "Fair"
+        items.append((name, rating, note))
+
+    add("Trout (rainbow/brown)", 45, 65, "Better in cool water. Focus mornings and shade when warmer.")
+    add("Kokanee", 42, 55, "Cool water. Often deeper when surface warms.")
+    add("Chinook salmon", 44, 58, "Cool water. Often deeper and near current.")
+    add("Lake trout", 42, 55, "Cold water. Usually deeper structure.")
+    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind-blown banks.")
+    add("Largemouth bass", 65, 80, "Warm water. Weeds, pads, shallow cover.")
+    add("Walleye", 55, 70, "Mid temps. Low light windows are strong.")
+    add("Panfish (perch/bluegill)", 60, 80, "Warm water. Shallows and cover.")
+    add("Catfish (channel)", 65, 85, "Warm water. Evening and night bites.")
+
+    # Prioritize Best, then Fair, then Low
+    rank = {"Best": 0, "Fair": 1, "Low": 2}
+    items.sort(key=lambda x: rank[x[1]])
+    return items
 
 # -------------------------------------------------
 # Header
@@ -254,7 +219,7 @@ with st.sidebar:
 
     tool = st.radio(
         "Tool",
-        ["Best fishing times", "Trolling depth calculator", "Directional indicator"],
+        ["Best fishing times", "Trolling depth calculator", "Water temperature targeting"],
         label_visibility="collapsed",
     )
 
@@ -342,53 +307,65 @@ elif tool == "Trolling depth calculator":
     )
 
 else:
-    st.markdown("### Directional indicator")
-    st.markdown("<div class='small'>Location not required. Enter a heading to display a simple compass.</div>", unsafe_allow_html=True)
+    st.markdown("### Water temperature targeting")
+    st.markdown("<div class='small'>Enter water temperature and get target species suggestions.</div>", unsafe_allow_html=True)
 
-    mode = st.radio("Mode", ["Manual heading", "Heading with wind helper"], horizontal=True)
+    unit = st.radio("Units", ["F", "C"], horizontal=True)
 
-    heading = st.number_input("Heading (degrees)", 0, 359, value=0, step=1)
-    cardinal = heading_to_cardinal(heading)
+    if unit == "F":
+        temp_f = st.number_input("Water temp (F)", value=58.0, step=0.5)
+    else:
+        temp_c = st.number_input("Water temp (C)", value=14.5, step=0.5)
+        temp_f = c_to_f(temp_c)
 
-    # Compass display (needle rotates)
     st.markdown(
-        "<div class='card'>"
-        "<div class='card-title'>Current heading</div>"
-        "<div class='big-value'>" + str(heading) + " deg (" + cardinal + ")</div>"
-        "</div>",
+        "<div class='card'><div class='card-title'>Water temperature</div>"
+        "<div class='card-value'>" + str(round(temp_f, 1)) + " F</div></div>",
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        "<div class='compass-wrap'>"
-        "<div class='compass'>"
-        "<div class='tick'>N</div>"
-        "<div class='needle' style='transform: translate(-50%, -50%) rotate(" + str(heading) + "deg);'></div>"
-        "<div class='center'></div>"
-        "</div>"
-        "</div>"
-        "<div class='compass-labels'><span>W</span><span>E</span></div>"
-        "<div class='compass-labels'><span>S</span><span></span></div>",
-        unsafe_allow_html=True,
-    )
+    targets = temp_targets(temp_f)
 
-    if mode == "Heading with wind helper":
-        st.markdown("<div class='small' style='margin-top:10px;'>Wind helper uses your fishing-times location if set.</div>", unsafe_allow_html=True)
+    # Show top group first
+    best = [x for x in targets if x[1] == "Best"]
+    fair = [x for x in targets if x[1] == "Fair"]
+    low = [x for x in targets if x[1] == "Low"]
 
-        lat = st.session_state.get("lat")
-        lon = st.session_state.get("lon")
+    if best:
+        st.markdown("#### Best targets")
+        for name, rating, note in best:
+            st.markdown(
+                "<div class='card'>"
+                "<div class='card-title'>" + name + "</div>"
+                "<div class='card-value'>" + rating + "</div>"
+                "<div class='small' style='margin-top:8px;'>" + note + "</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
-        wind_from = st.number_input("Wind direction FROM (degrees)", 0, 359, value=0, step=1)
-        relation = wind_relation(heading, wind_from)
+    if fair:
+        st.markdown("#### Fair targets")
+        for name, rating, note in fair:
+            st.markdown(
+                "<div class='card'>"
+                "<div class='card-title'>" + name + "</div>"
+                "<div class='card-value'>" + rating + "</div>"
+                "<div class='small' style='margin-top:8px;'>" + note + "</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
-        st.markdown(
-            "<div class='card'>"
-            "<div class='card-title'>Wind vs heading</div>"
-            "<div class='card-value'>" + relation + "</div>"
-            "<div class='small' style='margin-top:8px;'>This is a simple heading comparison. Use it to decide trolling passes.</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+    if low and not best:
+        st.markdown("#### Low targets")
+        for name, rating, note in low[:4]:
+            st.markdown(
+                "<div class='card'>"
+                "<div class='card-title'>" + name + "</div>"
+                "<div class='card-value'>" + rating + "</div>"
+                "<div class='small' style='margin-top:8px;'>" + note + "</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
 # -------------------------------------------------
 # Footer
