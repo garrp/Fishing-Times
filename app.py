@@ -1,16 +1,16 @@
 # app.py
 # FishyNW.com - Best Fishing Times, Trolling Depth, Water Temp Targeting, and Species Tips
-# Version 1.4
+# Version 1.5
 
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 
-APP_VERSION = "1.4"
+APP_VERSION = "1.5"
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-Transparent.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.4",
+    "User-Agent": "FishyNW-App-1.5",
     "Accept": "application/json",
 }
 
@@ -152,11 +152,31 @@ def best_times(lat, lon, day_obj):
     }
 
 
-def trolling_depth(speed, weight, line_out, line_type):
-    if speed <= 0 or weight <= 0 or line_out <= 0:
+def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
+    """
+    Rule of thumb estimate:
+    - Deeper with more weight and more line out
+    - Shallower with more speed
+    - Shallower with thicker / higher test line (more drag)
+    - Line type modifies drag too
+    """
+
+    if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0 or line_test_lb <= 0:
         return None
-    drag = {"Braid": 1.0, "Fluorocarbon": 1.12, "Monofilament": 1.2}[line_type]
-    depth = 0.135 * (weight / (drag * (speed ** 1.35))) * line_out
+
+    # Base drag by line material
+    type_drag = {"Braid": 1.0, "Fluorocarbon": 1.12, "Monofilament": 1.2}[line_type]
+
+    # Line-test drag factor:
+    # Calibrated around 20 lb = neutral 1.0.
+    # Higher test = more drag = shallower.
+    # Lower test = less drag = deeper.
+    test_ratio = line_test_lb / 20.0
+    test_drag = test_ratio ** 0.35
+
+    total_drag = type_drag * test_drag
+
+    depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
 
@@ -165,9 +185,6 @@ def c_to_f(c):
 
 
 def temp_rating(temp_f, lo, hi):
-    # Best = inside range
-    # Fair = within 5F outside
-    # Low = farther than that
     if lo <= temp_f <= hi:
         return "Best"
     if (lo - 5) <= temp_f < lo or hi < temp_f <= (hi + 5):
@@ -199,8 +216,6 @@ def temp_targets(temp_f):
 
 
 def species_tip_db():
-    # Each species includes a temperature band (F) for "most active".
-    # All ASCII.
     return {
         "Kokanee": {
             "temp_f": (42, 55),
@@ -226,9 +241,7 @@ def species_tip_db():
                 "Troll small spoons or spinners at 1.2 to 1.8 mph.",
                 "Use longer leads if the water is clear."
             ],
-            "Bottom": [
-                "Slow down and run near structure. If still fishing, suspend bait just off bottom."
-            ],
+            "Bottom": ["Still fish bait just off bottom near structure or drop-offs."],
             "Quick": [
                 "If bites stop, change lure color or adjust speed slightly.",
                 "Follow food and temperature changes."
@@ -336,22 +349,10 @@ def species_tip_db():
         },
         "Bluegill": {
             "temp_f": (65, 80),
-            "Top": [
-                "Tiny poppers can work in summer.",
-                "Fish near shade and cover."
-            ],
-            "Mid": [
-                "Small jigs under a float.",
-                "Slow retrieves and pauses."
-            ],
-            "Bottom": [
-                "Tiny jigs and bait near the base of weeds.",
-                "Downsize when they get picky."
-            ],
-            "Quick": [
-                "Beds: fish edges and be gentle.",
-                "Light line and small hooks matter."
-            ],
+            "Top": ["Tiny poppers can work in summer near shade and cover."],
+            "Mid": ["Small jigs under a float with slow retrieves and pauses."],
+            "Bottom": ["Tiny jigs and bait near the base of weeds. Downsize when picky."],
+            "Quick": ["Beds: fish edges gently. Light line and small hooks matter."],
         },
         "Channel catfish": {
             "temp_f": (65, 85),
@@ -362,29 +363,14 @@ def species_tip_db():
                 "Target holes, outside bends, slow water near current.",
                 "Reset to fresh bait if it goes quiet."
             ],
-            "Quick": [
-                "Evening and night are prime.",
-                "Let them load the rod before setting the hook."
-            ],
+            "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
         },
         "Trout (general)": {
             "temp_f": (45, 65),
-            "Top": [
-                "Cast small spoons and spinners when you see surface activity.",
-                "Work shorelines early and wind lanes mid day."
-            ],
-            "Mid": [
-                "Troll spinners and small spoons at steady speed.",
-                "Longer leads in clear water."
-            ],
-            "Bottom": [
-                "Slip sinker and keep bait just off bottom.",
-                "Slow down if bites are short."
-            ],
-            "Quick": [
-                "Match hatch: insects in spring, fry later.",
-                "Cloud cover and chop can help."
-            ],
+            "Top": ["Cast small spoons and spinners when you see surface activity."],
+            "Mid": ["Troll spinners and small spoons at steady speed. Longer leads in clear water."],
+            "Bottom": ["Slip sinker and keep bait just off bottom. Slow down if bites are short."],
+            "Quick": ["Match hatch. Cloud cover and chop can help."],
         },
     }
 
@@ -405,20 +391,18 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
-    # Optional temperature input to evaluate activity for this species
     st.markdown("#### Activity temperature")
-    st.markdown("<div class='small'>Enter current water temp to see if this species is in its best range.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Enter water temp to see if this species is in its best range.</div>", unsafe_allow_html=True)
     temp_f = st.number_input("Water temp (F) for this species", value=58.0, step=0.5)
 
     rating = temp_rating(temp_f, lo, hi) if lo is not None else "Unknown"
-    badge = "<span class='badge'>" + rating + "</span>"
     range_txt = str(lo) + " to " + str(hi) + " F"
 
     st.markdown(
         "<div class='card'>"
         "<div class='card-title'>Most active range</div>"
         "<div class='card-value'>" + range_txt + "</div>"
-        "<div style='margin-top:10px;'>" + badge + "</div>"
+        "<div style='margin-top:10px;'><span class='badge'>" + rating + "</span></div>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -524,15 +508,20 @@ elif tool == "Trolling depth calculator":
     speed = st.number_input("Speed (mph)", 0.0, value=1.5, step=0.1)
     weight = st.number_input("Weight (oz)", 0.0, value=8.0, step=0.5)
     line_out = st.number_input("Line out (feet)", 0.0, value=120.0, step=5.0)
-    line_type = st.radio("Line type", ["Braid", "Fluorocarbon", "Monofilament"], horizontal=True)
 
-    depth = trolling_depth(speed, weight, line_out, line_type)
+    col1, col2 = st.columns(2)
+    with col1:
+        line_type = st.radio("Line type", ["Braid", "Fluorocarbon", "Monofilament"])
+    with col2:
+        line_test = st.selectbox("Line test (lb)", [6, 8, 10, 12, 15, 20, 25, 30, 40, 50], index=6)
+
+    depth = trolling_depth(speed, weight, line_out, line_type, line_test)
 
     st.markdown(
         "<div class='card'><div class='card-title'>Estimated depth</div>"
         "<div class='card-value'>" +
         (str(depth) if depth is not None else "--") + " ft</div>"
-        "<div class='small' style='margin-top:8px;'>Rule of thumb. Current and lure drag affect results.</div>"
+        "<div class='small' style='margin-top:8px;'>Heavier line runs shallower. Current and lure drag also affect results.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -598,7 +587,7 @@ elif tool == "Water temperature targeting":
 
 else:
     st.markdown("### Species tips")
-    st.markdown("<div class='small'>Pick a species and get tips plus the best activity temperature range.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Pick a species and get tips plus best activity temperature range.</div>", unsafe_allow_html=True)
 
     db = species_tip_db()
     species_list = sorted(list(db.keys()))
