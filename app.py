@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Best Fishing Times and Trolling Tools
-# Version 1.0 (Clean Reset)
+# Version 1.0 (Fixed and Stable)
 
 from datetime import datetime, timedelta, date
 import requests
@@ -33,26 +33,10 @@ st.markdown(
   padding-bottom: 2.5rem;
   max-width: 720px;
 }
-
-section[data-testid="stSidebar"] {
-  width: 320px;
-}
-
-.small {
-  color: rgba(255,255,255,0.7);
-  font-size: 0.95rem;
-}
-
-.logo {
-  text-align: center;
-  margin-bottom: 18px;
-}
-
-.logo img {
-  max-width: 260px;
-  width: 70%;
-}
-
+section[data-testid="stSidebar"] { width: 320px; }
+.small { color: rgba(255,255,255,0.7); font-size: 0.95rem; }
+.logo { text-align: center; margin-bottom: 18px; }
+.logo img { max-width: 260px; width: 70%; }
 .card {
   border: 1px solid rgba(255,255,255,0.15);
   background: rgba(255,255,255,0.04);
@@ -60,17 +44,8 @@ section[data-testid="stSidebar"] {
   padding: 16px;
   margin-top: 14px;
 }
-
-.card-title {
-  font-size: 1rem;
-  opacity: 0.85;
-}
-
-.card-value {
-  font-size: 1.6rem;
-  font-weight: 800;
-}
-
+.card-title { font-size: 1rem; opacity: 0.85; }
+.card-value { font-size: 1.6rem; font-weight: 800; }
 .footer {
   margin-top: 40px;
   padding-top: 20px;
@@ -79,10 +54,7 @@ section[data-testid="stSidebar"] {
   font-size: 0.95rem;
   opacity: 0.7;
 }
-
-button {
-  border-radius: 14px;
-}
+button { border-radius: 14px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -124,13 +96,13 @@ def geocode_place(name):
         return None, None
 
 
-def get_sun_times(lat, lon, day):
+def get_sun_times(lat, lon, day_iso):
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=" + str(lat) +
         "&longitude=" + str(lon) +
-        "&start_date=" + day +
-        "&end_date=" + day +
+        "&start_date=" + day_iso +
+        "&end_date=" + day_iso +
         "&daily=sunrise,sunset&timezone=auto"
     )
     try:
@@ -160,8 +132,9 @@ def get_wind(lat, lon):
         return {}
 
 
-def best_times(lat, lon, day):
-    sr, ss = get_sun_times(lat, lon, day)
+def best_times(lat, lon, day_obj):
+    day_iso = day_obj.isoformat()
+    sr, ss = get_sun_times(lat, lon, day_iso)
     if not sr or not ss:
         return None
     return {
@@ -182,9 +155,7 @@ def trolling_depth(speed, weight, line_out, line_type):
 # -------------------------------------------------
 st.markdown(
     "<div class='logo'><img src='" + LOGO_URL + "'></div>"
-    "<div class='small' style='text-align:center;'>"
-    "Independent Northwest fishing tools"
-    "</div>",
+    "<div class='small' style='text-align:center;'>Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
 
@@ -234,8 +205,7 @@ if tool == "Best fishing times":
             e0, e1 = times["evening"]
 
             st.markdown(
-                "<div class='card'>"
-                "<div class='card-title'>Morning window</div>"
+                "<div class='card'><div class='card-title'>Morning window</div>"
                 "<div class='card-value'>" +
                 m0.strftime("%I:%M %p").lstrip("0") +
                 " - " +
@@ -245,8 +215,7 @@ if tool == "Best fishing times":
             )
 
             st.markdown(
-                "<div class='card'>"
-                "<div class='card-title'>Evening window</div>"
+                "<div class='card'><div class='card-title'>Evening window</div>"
                 "<div class='card-value'>" +
                 e0.strftime("%I:%M %p").lstrip("0") +
                 " - " +
@@ -259,11 +228,9 @@ if tool == "Best fishing times":
             wind = get_wind(lat, lon)
             for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
                 st.markdown(
-                    "<div class='card'>"
-                    "<div class='card-title'>" + h + "</div>"
-                    "<div class='card-value'>" +
-                    str(wind.get(h, "--")) + " mph"
-                    "</div></div>",
+                    "<div class='card'><div class='card-title'>" + h +
+                    "</div><div class='card-value'>" +
+                    str(wind.get(h, "--")) + " mph</div></div>",
                     unsafe_allow_html=True,
                 )
 
@@ -279,11 +246,9 @@ else:
     depth = trolling_depth(speed, weight, line_out, line_type)
 
     st.markdown(
-        "<div class='card'>"
-        "<div class='card-title'>Estimated depth</div>"
+        "<div class='card'><div class='card-title'>Estimated depth</div>"
         "<div class='card-value'>" +
-        (str(depth) if depth else "--") + " ft"
-        "</div></div>",
+        (str(depth) if depth else "--") + " ft</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -291,9 +256,7 @@ else:
 # Footer
 # -------------------------------------------------
 st.markdown(
-    "<div class='footer'>"
-    "<strong>FishyNW.com</strong><br>"
-    "Independent Northwest fishing tools"
-    "</div>",
+    "<div class='footer'><strong>FishyNW.com</strong><br>"
+    "Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
