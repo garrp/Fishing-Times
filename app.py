@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.7.4
+# Version 1.7.5
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7.4"
+APP_VERSION = "1.7.5"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7.4",
+    "User-Agent": "FishyNW-App-1.7.5",
     "Accept": "application/json",
 }
 
@@ -26,7 +26,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Branding colors (light green primary button + cream text)
+# Branding colors (all buttons light green + cream text)
 # -------------------------------------------------
 CREAM_TEXT = "#f6f2e7"
 SIDEBAR_BG = "#071b1f"
@@ -64,26 +64,16 @@ section[data-testid="stSidebar"] div {
   color: """ + CREAM_TEXT + """;
 }
 
-/* Buttons */
+/* Buttons: all light green */
 button { border-radius: 14px; }
 section[data-testid="stSidebar"] .stButton > button {
   width: 100%;
-  border: 1px solid """ + SIDEBAR_BORDER + """;
-  background: rgba(246,242,231,0.06);
-  color: """ + CREAM_TEXT + """;
-  font-weight: 800;
-}
-section[data-testid="stSidebar"] .stButton > button:hover {
-  background: rgba(246,242,231,0.10);
-}
-
-/* Light green primary button in sidebar */
-section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
   background: """ + GREEN_BTN + """ !important;
   border: 1px solid rgba(0,0,0,0.12) !important;
   color: #0b1a12 !important;
+  font-weight: 900 !important;
 }
-section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+section[data-testid="stSidebar"] .stButton > button:hover {
   background: """ + GREEN_BTN_HOVER + """ !important;
 }
 
@@ -373,15 +363,15 @@ def species_tip_db():
             "Top": ["Not common topwater, but they can come shallow at night."],
             "Mid": [
                 "Troll crankbaits along breaks at dusk and dawn.",
-                "If suspended, match that depth and keep moving.",
+                "If suspended, match that depth and keep moving."
             ],
             "Bottom": [
                 "Jig and crawler or blade bait near bottom.",
-                "Bottom bouncer with harness on edges.",
+                "Bottom bouncer with harness on edges."
             ],
             "Quick": [
                 "Low light is best: early, late, cloudy.",
-                "Stay on transitions: flats to deep breaks.",
+                "Stay on transitions: flats to deep breaks."
             ],
         },
         "Perch": {
@@ -389,15 +379,15 @@ def species_tip_db():
             "Top": ["Not a true topwater bite. You can catch them shallow though."],
             "Mid": [
                 "Small jigs tipped with bait, slowly swum through schools.",
-                "If you find one, there are usually more.",
+                "If you find one, there are usually more."
             ],
             "Bottom": [
                 "Vertical jig small baits on bottom.",
-                "Use light line and small hooks.",
+                "Use light line and small hooks."
             ],
             "Quick": [
                 "Soft bottom near weeds can be good.",
-                "When you mark a school, hold position and pick them off.",
+                "When you mark a school, hold position and pick them off."
             ],
         },
         "Bluegill": {
@@ -414,7 +404,7 @@ def species_tip_db():
             "Bottom": [
                 "Soak bait on scent trails: cut bait, worms, stink bait.",
                 "Target holes, outside bends, slow water near current.",
-                "Reset to fresh bait if it goes quiet.",
+                "Reset to fresh bait if it goes quiet."
             ],
             "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
         },
@@ -549,21 +539,13 @@ PAGE_TITLES = {
 }
 
 # -------------------------------------------------
-# Sidebar navigation (buttons)
-# - The top button "Best fishing times" now also grabs current location.
-# - Removed the separate "Display Best Fishing Times" button.
+# Sidebar navigation (all buttons light green)
 # -------------------------------------------------
 with st.sidebar:
     st.markdown("### FishyNW Tools")
     st.caption("Version " + APP_VERSION)
 
-    # Top button: sets tool AND gets location
-    if st.button(
-        "Best fishing times",
-        use_container_width=True,
-        type="primary",
-        key="nav_best_times",
-    ):
+    if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
         st.session_state["tool"] = "Best fishing times"
         st.session_state["lat"], st.session_state["lon"] = get_location()
 
@@ -586,7 +568,7 @@ with st.sidebar:
         selected_day = st.date_input("Date", value=date.today(), key="day_input")
 
 # -------------------------------------------------
-# Header row
+# Header row (logo left, title right)
 # -------------------------------------------------
 tool = st.session_state["tool"]
 page_title = PAGE_TITLES.get(tool, "FishyNW Tools")
