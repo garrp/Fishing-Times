@@ -94,7 +94,13 @@ def clamp_dt_to_day(dt_obj: datetime, target_day: date):
     )
 
 
-def compute_fishing_windows(sunrise, sunset, target_day, species):
+def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: date):
+    """
+    Universal fishing windows (no species):
+    - Dawn
+    - Midday
+    - Dusk
+    """
     dawn_start = sunrise - timedelta(hours=1)
     dawn_end = sunrise + timedelta(hours=1, minutes=30)
 
@@ -105,37 +111,10 @@ def compute_fishing_windows(sunrise, sunset, target_day, species):
     dusk_end = sunset + timedelta(minutes=45)
 
     windows = [
-        ("Early", dawn_start, dawn_end, 0.75),
+        ("Early", dawn_start, dawn_end, 0.80),
         ("Midday", midday_start, midday_end, 0.55),
-        ("Evening", dusk_start, dusk_end, 0.80),
+        ("Evening", dusk_start, dusk_end, 0.85),
     ]
-
-    s = species.lower()
-
-    if s in ["kokanee", "rainbow trout", "trout", "chinook", "lake trout"]:
-        windows = [
-            ("Early (best)", dawn_start, dawn_end, 0.90),
-            ("Midday", midday_start, midday_end, 0.45),
-            ("Evening (best)", dusk_start, dusk_end, 0.90),
-        ]
-    elif s == "walleye":
-        windows = [
-            ("Early", dawn_start, dawn_end, 0.70),
-            ("Midday", midday_start, midday_end, 0.35),
-            ("Evening (best)", dusk_start, dusk_end, 0.90),
-        ]
-    elif "bass" in s:
-        windows = [
-            ("Early (best)", dawn_start, dawn_end, 0.85),
-            ("Midday", midday_start, midday_end, 0.60),
-            ("Evening (best)", dusk_start, dusk_end, 0.85),
-        ]
-    elif "catfish" in s:
-        windows = [
-            ("Early", dawn_start, dawn_end, 0.45),
-            ("Midday", midday_start, midday_end, 0.50),
-            ("Evening (best)", dusk_start, dusk_end, 0.90),
-        ]
 
     fixed = []
     for label, s_dt, e_dt, w in windows:
@@ -183,19 +162,6 @@ def make_fishing_graph(target_day, windows):
     return buf
 
 
-def species_note(species):
-    s = species.lower()
-    if "trout" in s or "kokanee" in s:
-        return "Trolling lines up best with dawn and dusk."
-    if "walleye" in s:
-        return "Low light periods dominate."
-    if "bass" in s:
-        return "Early and late windows are strongest."
-    if "catfish" in s:
-        return "Evening is typically best."
-    return "Use the shaded windows as a baseline."
-
-
 # -----------------------------
 # UI
 # -----------------------------
@@ -239,21 +205,6 @@ with st.sidebar:
 
     target_date = st.date_input("Day", date.today())
 
-    species = st.selectbox(
-        "Species",
-        [
-            "Kokanee",
-            "Rainbow trout",
-            "Walleye",
-            "Smallmouth bass",
-            "Largemouth bass",
-            "Chinook",
-            "Lake trout",
-            "Catfish",
-            "Other",
-        ],
-    )
-
     lat = st.number_input("Latitude", value=47.6777, format="%.6f")
     lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
 
@@ -265,6 +216,7 @@ if not submitted:
 st.markdown("### Location")
 st.write(f"Lat {lat:.4f}, Lon {lon:.4f}")
 
+# Weather fetch
 wx = fetch_weather(lat, lon, target_date)
 fallback = wx is None
 
@@ -272,7 +224,10 @@ if fallback:
     st.info("Live weather unavailable. Using calm-wind fallback.")
 
 if fallback:
-    times = [datetime(target_date.year, target_date.month, target_date.day, h).isoformat() for h in range(24)]
+    times = [
+        datetime(target_date.year, target_date.month, target_date.day, h).isoformat()
+        for h in range(24)
+    ]
     speeds = [3.0] * 24
     dirs = [180.0] * 24
     sunrise = datetime(target_date.year, target_date.month, target_date.day, 6, 30)
@@ -286,7 +241,8 @@ else:
     sunrise = parse_iso_dt(daily["sunrise"][0])
     sunset = parse_iso_dt(daily["sunset"][0])
 
-windows = compute_fishing_windows(sunrise, sunset, target_date, species)
+# Fishing windows
+windows = compute_fishing_windows(sunrise, sunset, target_date)
 
 st.markdown("### Best Fishing Times")
 st.image(make_fishing_graph(target_date, windows), use_container_width=True)
@@ -294,11 +250,9 @@ st.image(make_fishing_graph(target_date, windows), use_container_width=True)
 for label, s_dt, e_dt, _ in windows:
     st.write(f"• {label}: {s_dt.strftime('%-I:%M %p')} – {e_dt.strftime('%-I:%M %p')}")
 
+# Wind
 st.markdown("### Wind (every 2 hours)")
 for t, mph, d in wind_every_n_hours(times, speeds, dirs, target_date, 2):
     st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({d})")
-
-st.markdown("### Species Note")
-st.write(f"• {species_note(species)}")
 
 st.caption(f"FishyNW • v{APP_VERSION}")
