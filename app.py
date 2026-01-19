@@ -46,6 +46,10 @@ def safe_read_logo(path: str):
 # -----------------------------
 @st.cache_data(ttl=86400)
 def geocode_city(city: str):
+    """
+    Open-Meteo geocoding (no key). Cached 24h.
+    Returns (label, lat, lon) or (None, None, None).
+    """
     if not city or not city.strip():
         return None, None, None
 
@@ -73,6 +77,11 @@ def geocode_city(city: str):
 
 @st.cache_data(ttl=1800)
 def fetch_weather(lat: float, lon: float, day: date):
+    """
+    Open-Meteo forecast (no key). Cached 30m.
+    Returns JSON with hourly wind speed + direction, plus sunrise/sunset.
+    Returns None on failure.
+    """
     start = day.isoformat()
     end = (day + timedelta(days=1)).isoformat()
 
@@ -111,6 +120,7 @@ def wind_dir_to_text(deg: float):
 
 
 def clamp_dt_to_day(dt_obj: datetime, target_day: date):
+    """Force dt to have the same date as target_day while preserving time."""
     return datetime(
         year=target_day.year,
         month=target_day.month,
@@ -122,6 +132,10 @@ def clamp_dt_to_day(dt_obj: datetime, target_day: date):
 
 
 def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: date, species: str):
+    """
+    Returns a list of windows: (label, start_dt, end_dt, weight)
+    weight is a rough "goodness" score (for graph shading)
+    """
     dawn_start = sunrise - timedelta(hours=1)
     dawn_end = sunrise + timedelta(hours=1, minutes=30)
 
@@ -175,6 +189,10 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
 
 
 def wind_every_n_hours(times, speeds, dirs, target_day: date, step_hours: int):
+    """
+    Pick entries every N hours and keep only target_day.
+    Returns list of (datetime, mph, dir_text)
+    """
     step = max(1, int(step_hours))
     out = []
     for i in range(0, len(times), step):
@@ -229,14 +247,15 @@ def species_note(species: str):
 # -----------------------------
 st.set_page_config(page_title=APP_TITLE, layout="centered")
 
+# Header
 logo = safe_read_logo(LOGO_FILENAME)
 if logo:
     st.image(logo, use_container_width=True)
 
 st.title(APP_TITLE)
-st.caption("One day only • Best fishing times graph • Wind listed every 2 hours")
+st.caption("Version 1.0 • One day only • Best fishing times graph • Wind listed every 2 hours")
 
-# Sidebar inputs
+# Sidebar inputs (v1.0 layout polish)
 with st.sidebar:
     st.subheader("Inputs")
 
@@ -299,8 +318,8 @@ if using_fallback:
         datetime(target_date.year, target_date.month, target_date.day, h, 0).isoformat()
         for h in range(0, 24)
     ]
-    speeds = [3.0] * 24
-    dirs = [180.0] * 24
+    speeds = [3.0] * 24  # mph
+    dirs = [180.0] * 24  # degrees (S)
 
     sunrise = datetime(target_date.year, target_date.month, target_date.day, 6, 30)
     sunset = datetime(target_date.year, target_date.month, target_date.day, 17, 0)
@@ -336,7 +355,8 @@ else:
         ("Evening", eve - timedelta(hours=1), eve + timedelta(hours=2), 0.80),
     ]
 
-st.image(make_fishing_graph(target_date, windows), use_container_width=True)
+graph_buf = make_fishing_graph(target_date, windows)
+st.image(graph_buf, use_container_width=True)
 
 st.markdown("### Best Windows (list)")
 for label, s_dt, e_dt, _ in windows:
@@ -345,10 +365,16 @@ for label, s_dt, e_dt, _ in windows:
 st.markdown("### Species Note")
 st.write(f"• {species_note(species)}")
 
+# Winds every 2 hours
 st.markdown("### Wind (every 2 hours)")
 wind2 = wind_every_n_hours(times, speeds, dirs, target_date, step_hours=2)
 
-for t, mph, dtxt in wind2:
-    st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({dtxt})")
+if not wind2:
+    for i in range(min(12, len(times))):
+        ttxt = parse_iso_dt(times[i]).strftime("%-I:%M %p")
+        st.write(f"• {ttxt}: {float(speeds[i]):.0f} mph ({wind_dir_to_text(float(dirs[i]))})")
+else:
+    for t, mph, dtxt in wind2:
+        st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({dtxt})")
 
 st.caption(f"FishyNW • v{APP_VERSION} • one-day • best times graph • wind every 2 hours")
