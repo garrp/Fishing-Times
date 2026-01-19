@@ -1,340 +1,347 @@
-# app.py — Fishing Northwest (v1.1)
-# Main features:
-# 1) Best Fishing Times by Location
-# 2) Depth Calculator (trolling / drop weight estimate)
+# app.py
+# Fishing Northwest — Best Fishing Times by Location (v1.1 wind fix, still v1.0-style simple)
+# Runs on Streamlit Cloud or locally: streamlit run app.py
 
 import math
+from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
-from datetime import datetime, date, timedelta
+
 
 APP_VERSION = "1.1"
 
 # ----------------------------
-# Page config + lightweight CSS
+# Page + Brand Styling
 # ----------------------------
 st.set_page_config(
-    page_title="Fishing Northwest — Best Fishing Times",
+    page_title="Best Fishing Times by Location | Fishing Northwest",
     page_icon="🎣",
     layout="centered",
 )
 
 st.markdown(
     """
-    <style>
-      /* two "blank lines" before the title */
-      .fn-title { margin-top: 2.25rem; margin-bottom: 0.25rem; font-weight: 800; font-size: 2.0rem; }
-      .fn-sub   { margin-top: 0.25rem; margin-bottom: 1.0rem; font-size: 1.0rem; opacity: 0.9; }
-      .small    { font-size: 0.92rem; opacity: 0.9; }
-      .metric-box { padding: 0.75rem 0.9rem; border: 1px solid rgba(49, 51, 63, 0.2); border-radius: 0.75rem; }
-    </style>
-    """,
+<style>
+/* overall spacing */
+.block-container { padding-top: 0.6rem; padding-bottom: 1.4rem; max-width: 760px; }
+h1, h2, h3 { letter-spacing: 0.2px; }
+.small-muted { color: rgba(255,255,255,0.65); font-size: 0.95rem; }
+
+/* cards */
+.fn-card {
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin: 10px 0px;
+}
+.fn-time { font-size: 1.05rem; opacity: 0.9; margin-bottom: 2px; }
+.fn-value { font-size: 1.55rem; font-weight: 700; }
+
+/* footer */
+.fn-footer { margin-top: 24px; opacity: 0.55; font-size: 0.95rem; }
+</style>
+""",
     unsafe_allow_html=True,
 )
 
 # ----------------------------
 # Helpers
 # ----------------------------
-def safe_float(x, default=None):
+UA_HEADERS = {
+    "User-Agent": "FishingNorthwest-FishingTimesApp/1.1 (streamlit)",
+    "Accept": "application/json",
+}
+
+
+def safe_get_json(url: str, timeout: int = 12):
+    r = requests.get(url, headers=UA_HEADERS, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+
+def ip_geolocate():
+    """
+    Best-effort IP geolocation (no city/state/zip shown in UI).
+    May fail on some mobile networks / privacy settings.
+    """
     try:
-        return float(x)
+        data = safe_get_json("https://ipinfo.io/json", timeout=8)
+        loc = data.get("loc")  # "lat,lon"
+        if not loc:
+            return None, None
+        lat_s, lon_s = loc.split(",")
+        return float(lat_s.strip()), float(lon_s.strip())
     except Exception:
-        return default
+        return None, None
 
-def try_geolocate():
+
+def geocode_place_to_latlon(place: str):
     """
-    Best-effort location (no guarantees on mobile).
-    Uses ipapi.co as a simple fallback without exposing street-level data.
-    Returns (lat, lon, label) or (None, None, None).
+    Open-Meteo geocoding. Returns (lat, lon) or (None, None).
     """
     try:
-        r = requests.get("https://ipapi.co/json/", timeout=6)
-        if r.status_code != 200:
-            return None, None, None
-        j = r.json()
-        lat = safe_float(j.get("latitude"))
-        lon = safe_float(j.get("longitude"))
-        if lat is None or lon is None:
-            return None, None, None
-        # IMPORTANT: user asked for no city/state/zip in the UI, so keep label generic
-        return lat, lon, "Detected location"
+        q = place.strip()
+        if not q:
+            return None, None
+        url = (
+            "https://geocoding-api.open-meteo.com/v1/search"
+            f"?name={requests.utils.quote(q)}&count=1&language=en&format=json"
+        )
+        data = safe_get_json(url, timeout=10)
+        results = data.get("results") or []
+        if not results:
+            return None, None
+        return float(results[0]["latitude"]), float(results[0]["longitude"])
     except Exception:
-        return None, None, None
+        return None, None
 
-def solar_events_stub(lat, lon, target_date):
-    """
-    Placeholder to keep v1.0 behavior stable if you were already using a sunrise/sunset API.
-    If your v1.0 used a specific API, paste that logic in here.
 
-    For now, returns local-ish times as strings.
+def get_wind_by_hour(lat: float, lon: float):
     """
-    # Very simple fallback: fixed times (better than crashing)
-    # You can replace this with your existing sunrise/sunset code from v1.0 if you had it.
+    Returns dict like {"00:00": 3.2, "04:00": 6.1, ...} in mph.
+    Uses Open-Meteo hourly wind_speed_10m with timezone auto.
+    """
+    if lat is None or lon is None:
+        return {}
+
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        "&hourly=wind_speed_10m"
+        "&wind_speed_unit=mph"
+        "&timezone=auto"
+    )
+
+    try:
+        data = safe_get_json(url, timeout=12)
+        times = data["hourly"]["time"]
+        speeds = data["hourly"]["wind_speed_10m"]
+
+        wind = {}
+        for t, s in zip(times, speeds):
+            # t example: "2026-01-18T00:00"
+            try:
+                dt = datetime.fromisoformat(t)
+                key = dt.strftime("%H:00")
+                # Keep first value per hour key (should be unique anyway)
+                if key not in wind:
+                    wind[key] = round(float(s), 1)
+            except Exception:
+                continue
+
+        return wind
+    except Exception:
+        return {}
+
+
+def get_sun_times(lat: float, lon: float, day: date):
+    """
+    Returns (sunrise_dt, sunset_dt) in local timezone as naive datetimes.
+    Open-Meteo daily sunrise/sunset.
+    """
+    if lat is None or lon is None:
+        return None, None
+
+    start = day.isoformat()
+    end = day.isoformat()
+
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        f"&start_date={start}&end_date={end}"
+        "&daily=sunrise,sunset"
+        "&timezone=auto"
+    )
+
+    try:
+        data = safe_get_json(url, timeout=12)
+        sunrise_s = (data.get("daily", {}).get("sunrise") or [None])[0]
+        sunset_s = (data.get("daily", {}).get("sunset") or [None])[0]
+        if not sunrise_s or not sunset_s:
+            return None, None
+        return datetime.fromisoformat(sunrise_s), datetime.fromisoformat(sunset_s)
+    except Exception:
+        return None, None
+
+
+def moon_phase_fraction(day: date):
+    """
+    Approx moon phase [0..1). 0=new, 0.5=full-ish.
+    Simple, good-enough algorithm for an app like this.
+    """
+    # Convert to days since known new moon (2000-01-06 18:14 UTC ~ JDN 2451550.1)
+    # We'll use a lightweight approximation.
+    y, m, d = day.year, day.month, day.day
+    if m < 3:
+        y -= 1
+        m += 12
+    a = math.floor(y / 100)
+    b = 2 - a + math.floor(a / 4)
+    jd = math.floor(365.25 * (y + 4716)) + math.floor(30.6001 * (m + 1)) + d + b - 1524.5
+    days_since = jd - 2451550.1
+    synodic = 29.53058867
+    phase = (days_since % synodic) / synodic
+    return phase
+
+
+def format_time(dt: datetime):
+    return dt.strftime("%-I:%M %p") if hasattr(dt, "strftime") else "—"
+
+
+def build_best_fishing_times(lat: float, lon: float, day: date):
+    """
+    Simple "best fishing times" approach:
+    - 1 hr before/after sunrise
+    - 1 hr before/after sunset
+    - Boost note based on moon phase near new/full
+    """
+    sunrise, sunset = get_sun_times(lat, lon, day)
+    if not sunrise or not sunset:
+        return None
+
+    morning_start = sunrise - timedelta(hours=1)
+    morning_end = sunrise + timedelta(hours=1)
+    evening_start = sunset - timedelta(hours=1)
+    evening_end = sunset + timedelta(hours=1)
+
+    phase = moon_phase_fraction(day)
+    # closeness to new(0) or full(0.5)
+    near_new = min(phase, 1 - phase)
+    near_full = abs(phase - 0.5)
+
+    note = "Normal conditions."
+    if near_new <= 0.08:
+        note = "Moon phase: near New Moon (often strong bite windows)."
+    elif near_full <= 0.08:
+        note = "Moon phase: near Full Moon (often strong bite windows)."
+
     return {
-        "sunrise": "06:30",
-        "sunset": "16:45",
+        "morning": (morning_start, morning_end),
+        "evening": (evening_start, evening_end),
+        "note": note,
     }
 
-def compute_major_minor_times(target_date):
-    """
-    Simple “best times” blocks (Major/Minor windows) based on the day.
-    If v1.0 already had a more detailed moon/solunar calculation, keep using it.
-    """
-    # Deterministic placeholder windows (keeps app functional offline).
-    # You can swap with your original solunar logic later.
-    seed = target_date.toordinal()
-    major1_h = (seed * 3) % 24
-    major2_h = (major1_h + 12) % 24
-    minor1_h = (seed * 5 + 3) % 24
-    minor2_h = (minor1_h + 12) % 24
-
-    def window_str(h, minutes=0, span_hours=2):
-        start = datetime.combine(target_date, datetime.min.time()) + timedelta(hours=h, minutes=minutes)
-        end = start + timedelta(hours=span_hours)
-        return f"{start.strftime('%-I:%M %p')} – {end.strftime('%-I:%M %p')}"
-
-    return {
-        "major_1": window_str(major1_h, minutes=0, span_hours=2),
-        "major_2": window_str(major2_h, minutes=0, span_hours=2),
-        "minor_1": window_str(minor1_h, minutes=0, span_hours=1),
-        "minor_2": window_str(minor2_h, minutes=0, span_hours=1),
-    }
-
-def depth_estimate_ft(
-    line_out_ft: float,
-    weight_oz: float,
-    speed_mph: float,
-    line_type: str,
-    line_lb: float,
-):
-    """
-    Practical estimate for drop weight / trolling weight depth.
-
-    This is an *estimate* (drag, lure size, current, leader length, rod angle, chop all matter).
-    The model is tuned to behave reasonably near common kayak trolling ranges.
-
-    Baseline anchor (from your prior Chinook notes):
-      speed ≈ 1.5 mph, braid, 8 oz, line_out 91/109/127/146 ft -> depth 50/60/70/80 ft
-      That’s roughly depth ≈ 0.55 * line_out at 8 oz / 1.5 mph on braid.
-
-    Model:
-      depth = line_out * base_ratio * weight_factor * speed_factor * line_drag_factor
-
-    """
-    # Guardrails
-    if line_out_ft <= 0 or weight_oz <= 0 or speed_mph <= 0:
-        return 0.0
-
-    # Base ratio at: braid, 8 oz, 1.5 mph
-    base_ratio = 0.55
-
-    # Weight factor: diminishing returns as weight rises
-    # (heavier helps, but not linear)
-    weight_factor = (weight_oz / 8.0) ** 0.45
-
-    # Speed factor: faster = more blowback = less depth
-    speed_factor = (1.5 / speed_mph) ** 0.70
-
-    # Line drag factor by type (braid lowest drag)
-    lt = (line_type or "").lower()
-    if "braid" in lt:
-        line_drag_factor = 1.00
-    elif "fluoro" in lt or "fluorocarbon" in lt:
-        line_drag_factor = 0.92
-    else:  # mono default
-        line_drag_factor = 0.85
-
-    # Line test factor: thicker line (higher lb test usually) = more drag
-    # Keep it gentle so it doesn’t swing wildly.
-    # 20 lb ~ baseline for braid in your notes.
-    if line_lb and line_lb > 0:
-        line_test_factor = (20.0 / line_lb) ** 0.12
-    else:
-        line_test_factor = 1.0
-
-    depth = line_out_ft * base_ratio * weight_factor * speed_factor * line_drag_factor * line_test_factor
-
-    # Clamp to sensible range
-    depth = max(0.0, min(depth, line_out_ft * 0.98))
-    return depth
 
 # ----------------------------
-# Header
+# Header (two spaces from top margin)
 # ----------------------------
-st.markdown('<div class="fn-title">Best fishing times by location</div>', unsafe_allow_html=True)
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.markdown("## Best fishing times by location")
 st.markdown(
-    '<div class="fn-sub">To use this app, click on the side menu bar to enter your location and generate the best fishing times.</div>',
+    '<div class="small-muted">To use this app, click on the side menu bar to enter your location and generate the best fishing times.</div>',
     unsafe_allow_html=True,
 )
 
 # ----------------------------
-# Sidebar — Primary menu + submenus
+# Sidebar Inputs
 # ----------------------------
 with st.sidebar:
-    st.markdown("### Fishing Northwest")
-    st.caption(f"v{APP_VERSION}")
-
-    primary = st.radio(
-        "Primary menu",
-        ["Best Fishing Times", "Depth Calculator"],
+    st.markdown("### Location")
+    mode = st.radio(
+        "Choose location method",
+        ["Use current location (best effort)", "Enter a place name", "Enter latitude & longitude"],
         index=0,
     )
 
-    st.divider()
+    lat = lon = None
 
-# ----------------------------
-# Page: Best Fishing Times
-# ----------------------------
-if primary == "Best Fishing Times":
-    with st.sidebar:
-        st.markdown("#### Location")
-        location_mode = st.radio(
-            "Choose location method",
-            ["Manual", "Detect (approx)"],
-            index=0,
-        )
+    if mode == "Use current location (best effort)":
+        if st.button("Detect my location"):
+            lat, lon = ip_geolocate()
+            st.session_state["lat"] = lat
+            st.session_state["lon"] = lon
 
-        lat = lon = None
-        if location_mode == "Manual":
-            lat = st.number_input("Latitude", value=47.0, format="%.6f")
-            lon = st.number_input("Longitude", value=-116.8, format="%.6f")
-        else:
-            det_lat, det_lon, det_label = try_geolocate()
-            if det_lat is None or det_lon is None:
-                st.warning("Could not detect location. Switch to Manual.")
-            else:
-                lat, lon = det_lat, det_lon
-                st.success("Location detected (approx).")
+        lat = st.session_state.get("lat")
+        lon = st.session_state.get("lon")
 
-        st.markdown("#### Date")
-        target_date = st.date_input("Select date", value=date.today())
+        if lat is None or lon is None:
+            st.caption("Tip: If detection fails, use Place name or Lat/Lon.")
 
-        st.divider()
-        st.markdown("#### Weather (optional)")
-        show_wind = st.toggle("Show wind every 4 hours", value=True)
+    elif mode == "Enter a place name":
+        place = st.text_input("Place name", placeholder="Example: Coeur d'Alene")
+        if st.button("Use this place"):
+            lat, lon = geocode_place_to_latlon(place)
+            st.session_state["lat"] = lat
+            st.session_state["lon"] = lon
 
-    # Main content
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown('<div class="metric-box"><div class="small">Latitude</div><div><b>{}</b></div></div>'.format(
-            "—" if lat is None else f"{lat:.6f}"
-        ), unsafe_allow_html=True)
-    with col2:
-        st.markdown('<div class="metric-box"><div class="small">Longitude</div><div><b>{}</b></div></div>'.format(
-            "—" if lon is None else f"{lon:.6f}"
-        ), unsafe_allow_html=True)
+        lat = st.session_state.get("lat")
+        lon = st.session_state.get("lon")
 
-    st.divider()
-
-    times = compute_major_minor_times(target_date)
-    solar = solar_events_stub(lat or 0.0, lon or 0.0, target_date)
-
-    st.subheader("Fishing times")
-    a, b = st.columns(2)
-    with a:
-        st.write(f"**Major 1:** {times['major_1']}")
-        st.write(f"**Minor 1:** {times['minor_1']}")
-    with b:
-        st.write(f"**Major 2:** {times['major_2']}")
-        st.write(f"**Minor 2:** {times['minor_2']}")
-
-    st.divider()
-    st.subheader("Sun")
-    c, d = st.columns(2)
-    with c:
-        st.write(f"**Sunrise:** {solar['sunrise']}")
-    with d:
-        st.write(f"**Sunset:** {solar['sunset']}")
-
-    # Wind section placeholder (keep light, since your v1.0 had wind logic already)
-    if show_wind:
-        st.divider()
-        st.subheader("Wind (every 4 hours)")
-        st.caption("If your v1.0 already pulls wind from an API, paste that code back in here.")
-        hours = [0, 4, 8, 12, 16, 20]
-        cols = st.columns(3)
-        for i, h in enumerate(hours):
-            with cols[i % 3]:
-                st.markdown(
-                    f'<div class="metric-box"><div class="small">{h:02d}:00</div><div><b>— mph</b></div></div>',
-                    unsafe_allow_html=True,
-                )
-
-# ----------------------------
-# Page: Depth Calculator
-# ----------------------------
-else:
-    with st.sidebar:
-        st.markdown("#### Depth inputs")
-        line_out_ft = st.number_input("Line out (feet)", min_value=0.0, value=120.0, step=5.0)
-        weight_oz = st.number_input("Weight (oz)", min_value=0.0, value=8.0, step=1.0)
-        speed_mph = st.number_input("Speed (mph)", min_value=0.1, value=1.5, step=0.1, format="%.1f")
-
-        line_type = st.selectbox("Line type", ["Braid", "Fluorocarbon", "Mono"], index=0)
-        line_lb = st.number_input("Line test (lb)", min_value=1.0, value=20.0, step=1.0)
-
-        st.divider()
-        st.markdown("#### Extra")
-        show_table = st.toggle("Show quick table (common line-out)", value=True)
-
-    st.subheader("Depth calculator")
-    st.caption("This is an estimate for trolling weights or drop weights. Current, lure drag, and rod angle can change the real depth.")
-
-    est_depth = depth_estimate_ft(line_out_ft, weight_oz, speed_mph, line_type, line_lb)
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Estimated depth (ft)", f"{est_depth:.0f}")
-    with col2:
-        # simple blowback angle estimate
-        if line_out_ft > 0:
-            ratio = est_depth / line_out_ft
-        else:
-            ratio = 0
-        st.metric("Depth / line-out", f"{ratio:.2f}")
-    with col3:
-        # “how much more line for +10 ft depth” rough sensitivity
-        d2 = depth_estimate_ft(line_out_ft + 10, weight_oz, speed_mph, line_type, line_lb)
-        st.metric("Δ depth per +10 ft line", f"{(d2 - est_depth):.1f} ft")
-
-    st.divider()
-
-    st.markdown("**Rule of thumb:** slower + heavier + thinner line = deeper for the same line-out.")
-
-    if show_table:
-        st.subheader("Quick table")
-        st.caption("Same inputs, different line-out amounts.")
-        table_lineouts = [50, 75, 100, 125, 150, 175, 200]
-        rows = []
-        for lo in table_lineouts:
-            rows.append(
-                {
-                    "Line out (ft)": lo,
-                    "Estimated depth (ft)": round(depth_estimate_ft(lo, weight_oz, speed_mph, line_type, line_lb)),
-                }
-            )
-        st.dataframe(rows, use_container_width=True)
-
-    st.divider()
-    st.subheader("Reverse: line-out needed for a target depth")
-    target_depth = st.number_input("Target depth (ft)", min_value=0.0, value=60.0, step=5.0)
-
-    # Simple search for required line-out
-    if target_depth <= 0:
-        st.info("Enter a target depth above 0.")
     else:
-        lo = 10.0
-        best = None
-        for _ in range(400):
-            d = depth_estimate_ft(lo, weight_oz, speed_mph, line_type, line_lb)
-            if d >= target_depth:
-                best = lo
-                break
-            lo += 1.0
-        if best is None:
-            st.warning("Couldn’t reach that depth within 410 ft line-out using these settings.")
-        else:
-            st.success(f"Estimated line-out needed: **{best:.0f} ft** (for ~{target_depth:.0f} ft depth)")
+        lat_in = st.text_input("Latitude", placeholder="47.67")
+        lon_in = st.text_input("Longitude", placeholder="-116.78")
+        if st.button("Use these coordinates"):
+            try:
+                lat = float(lat_in.strip())
+                lon = float(lon_in.strip())
+                st.session_state["lat"] = lat
+                st.session_state["lon"] = lon
+            except Exception:
+                st.warning("Please enter valid numbers for latitude and longitude.")
 
-# Footer
-st.caption("Fishing Northwest")
+        lat = st.session_state.get("lat")
+        lon = st.session_state.get("lon")
+
+    st.divider()
+    st.markdown("### Day")
+    selected_day = st.date_input("Select date", value=date.today())
+
+    st.divider()
+    show_debug = st.toggle("Show debug", value=False)
+    if show_debug:
+        st.write("DEBUG lat/lon:", lat, lon)
+        st.write("App version:", APP_VERSION)
+
+# ----------------------------
+# Main Content
+# ----------------------------
+if lat is None or lon is None:
+    st.info("Enter your location in the side menu to generate fishing times and wind.")
+    st.markdown('<div class="fn-footer">Fishing Northwest</div>', unsafe_allow_html=True)
+    st.stop()
+
+# Best Fishing Times
+times = build_best_fishing_times(lat, lon, selected_day)
+
+if not times:
+    st.warning("Could not generate fishing times for that location. Try another method.")
+else:
+    st.markdown("### Best fishing times")
+    morning_start, morning_end = times["morning"]
+    evening_start, evening_end = times["evening"]
+
+    st.markdown(
+        f"""
+<div class="fn-card">
+  <div class="fn-time">Morning window</div>
+  <div class="fn-value">{format_time(morning_start)} – {format_time(morning_end)}</div>
+</div>
+<div class="fn-card">
+  <div class="fn-time">Evening window</div>
+  <div class="fn-value">{format_time(evening_start)} – {format_time(evening_end)}</div>
+</div>
+<div class="small-muted">{times["note"]}</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+# Wind (every 4 hours)
+st.markdown("### Wind (mph)")
+wind = get_wind_by_hour(lat, lon)
+
+display_hours = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]
+for h in display_hours:
+    val = wind.get(h)
+    shown = f"{val} mph" if val is not None else "— mph"
+    st.markdown(
+        f"""
+<div class="fn-card">
+  <div class="fn-time">{h}</div>
+  <div class="fn-value">{shown}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+st.markdown('<div class="fn-footer">Fishing Northwest</div>', unsafe_allow_html=True)
