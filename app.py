@@ -161,11 +161,11 @@ def make_fishing_graph(target_day, windows):
 # -----------------------------
 st.set_page_config(page_title="Best fishing times by location", layout="centered")
 
-# Two spaces from top margin + simple brand button
+# Two spaces from top margin
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 2.5rem; } /* ~ two visual spaces */
+    .block-container { padding-top: 2.5rem; }
     .stButton>button {
         background-color: #1f4fd8;
         color: white;
@@ -174,16 +174,12 @@ st.markdown(
         border: 0px;
         padding: 0.55rem 0.9rem;
     }
-    .stButton>button:hover {
-        background-color: #163aa6;
-        color: white;
-    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Header (logo optional)
+# Header
 logo = safe_read_logo(LOGO_FILENAME)
 if logo:
     col1, col2 = st.columns([1, 5])
@@ -191,15 +187,23 @@ if logo:
         st.image(logo, width=120)
     with col2:
         st.markdown(
-            "<h2 style='margin:0;'>Best fishing times by location</h2>",
+            """
+            <h2 style="margin:0;">Best fishing times by location</h2>
+            <p style="margin-top:0.4rem; color:#6c757d;">
+            To use this app, click on the side menu bar to enter your location and generate the best fishing times.
+            </p>
+            """,
             unsafe_allow_html=True,
         )
 else:
     st.markdown("## Best fishing times by location")
+    st.caption(
+        "To use this app, click on the side menu bar to enter your location and generate the best fishing times."
+    )
 
 st.divider()
 
-# Sidebar controls
+# Sidebar
 with st.sidebar:
     st.markdown("### Controls")
     target_date = st.date_input("Day", date.today())
@@ -214,7 +218,7 @@ st.markdown("### Location")
 st.write(f"Lat {lat:.4f}, Lon {lon:.4f}")
 
 # Weather fetch
-wx = fetch_weather(float(lat), float(lon), target_date)
+wx = fetch_weather(lat, lon, target_date)
 fallback = wx is None
 
 if fallback:
@@ -243,11 +247,6 @@ else:
     sunrise = parse_iso_dt(sunrise_list[0]) if sunrise_list else None
     sunset = parse_iso_dt(sunset_list[0]) if sunset_list else None
 
-    if not times or not speeds or not dirs or sunrise is None or sunset is None:
-        st.warning("Weather data missing for this location/date. Try again or use a nearby location.")
-        st.stop()
-
-# Fishing windows
 windows = compute_fishing_windows(sunrise, sunset, target_date)
 
 st.markdown("### Best Fishing Times")
@@ -256,13 +255,8 @@ st.image(make_fishing_graph(target_date, windows), use_container_width=True)
 for label, s_dt, e_dt, _ in windows:
     st.write(f"• {label}: {s_dt.strftime('%-I:%M %p')} – {e_dt.strftime('%-I:%M %p')}")
 
-# Wind
 st.markdown("### Wind (every 2 hours)")
-wind_list = wind_every_n_hours(times, speeds, dirs, target_date, 2)
-if not wind_list:
-    st.write("• No wind data available for this date.")
-else:
-    for t, mph, d in wind_list:
-        st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({d})")
+for t, mph, d in wind_every_n_hours(times, speeds, dirs, target_date, 2):
+    st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({d})")
 
 st.caption("Fishing Northwest")
