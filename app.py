@@ -8,7 +8,9 @@ import requests
 import streamlit as st
 
 APP_VERSION = "1.6"
-LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-Transparent.png"
+
+# Updated logo URL (per your request)
+LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
     "User-Agent": "FishyNW-App-1.6",
@@ -89,7 +91,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   gap: 14px;
 }
 .header-logo img {
-  max-width: 130px;   /* about 50% smaller than your original */
+  max-width: 130px;   /* about 50% smaller than original */
   width: 100%;
   height: auto;
   display: block;
@@ -246,23 +248,13 @@ def best_times(lat, lon, day_obj):
 
 
 def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
-    """
-    Rule of thumb estimate:
-    - Deeper with more weight and more line out
-    - Shallower with more speed
-    - Shallower with thicker / higher test line (more drag)
-    - Line type modifies drag too
-    """
     if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0 or line_test_lb <= 0:
         return None
 
     type_drag = {"Braid": 1.0, "Fluorocarbon": 1.12, "Monofilament": 1.2}[line_type]
-
-    # 20 lb = neutral. Higher test runs shallower.
     test_ratio = line_test_lb / 20.0
     test_drag = test_ratio ** 0.35
     total_drag = type_drag * test_drag
-
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
@@ -478,8 +470,7 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
-    # NO USER INPUT HERE (per your request)
-    # Only show the range.
+    # NO USER INPUT HERE. Only show the range.
     if lo is not None and hi is not None:
         range_txt = str(lo) + " to " + str(hi) + " F"
     else:
@@ -708,3 +699,4 @@ st.markdown(
     "Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
+```0
