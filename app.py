@@ -1,19 +1,19 @@
 # app.py
-# FishyNW.com - Best Fishing Times, Trolling Depth, Water Temp Targeting, Species Tips, and Speedometer
-# Version 1.7
+# FishyNW.com - Fishing Tools
+# Version 1.7.3
+# ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7"
+APP_VERSION = "1.7.3"
 
-# New logo (user provided)
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7",
+    "User-Agent": "FishyNW-App-1.7.3",
     "Accept": "application/json",
 }
 
@@ -26,14 +26,15 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Branding colors (adjust if you want slightly different)
+# Branding colors (light green button + cream text)
 # -------------------------------------------------
 CREAM_TEXT = "#f6f2e7"
 SIDEBAR_BG = "#071b1f"
 SIDEBAR_BORDER = "rgba(246,242,231,0.14)"
 CARD_BG = "rgba(246,242,231,0.05)"
 CARD_BORDER = "rgba(246,242,231,0.14)"
-GREEN_BTN = "#6fbf4a"         # light green (website-like)
+
+GREEN_BTN = "#6fbf4a"
 GREEN_BTN_HOVER = "#63ad41"
 
 # -------------------------------------------------
@@ -42,10 +43,9 @@ GREEN_BTN_HOVER = "#63ad41"
 st.markdown(
     """
 <style>
-/* Layout */
 .block-container {
   padding-top: 1.15rem;
-  padding-bottom: 3.25rem;  /* extra bottom space so footer never crowds content */
+  padding-bottom: 3.25rem;
   max-width: 720px;
 }
 section[data-testid="stSidebar"] { width: 320px; }
@@ -56,7 +56,7 @@ section[data-testid="stSidebar"] > div {
   border-right: 1px solid """ + SIDEBAR_BORDER + """;
 }
 
-/* Text colors - make sidebar menu legible */
+/* Sidebar text contrast */
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] p,
 section[data-testid="stSidebar"] span,
@@ -77,7 +77,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   background: rgba(246,242,231,0.10);
 }
 
-/* Primary (we use this for "Display Best Fishing Times") */
+/* Light green primary button in sidebar */
 section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
   background: """ + GREEN_BTN + """ !important;
   border: 1px solid rgba(0,0,0,0.12) !important;
@@ -93,11 +93,11 @@ section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;   /* lower the header so logo is fully visible */
+  margin-top: 10px;
   margin-bottom: 6px;
 }
 .header-logo img {
-  max-width: 130px;   /* about 50% smaller vs old 260 */
+  max-width: 130px;
   width: 100%;
   height: auto;
   display: block;
@@ -374,7 +374,7 @@ def species_tip_db():
                 "Flip soft plastics into holes and let it fall."
             ],
             "Bottom": [
-                "Texas rig and jig in thick cover and along drop offs.",
+                "Texas rig and jig in thick cover and along drop-offs.",
                 "Slow down when pressured."
             ],
             "Quick": [
@@ -462,9 +462,7 @@ def render_species_tips(name, db):
             "<div class='card'>"
             "<div class='card-title'>Most active water temperature range</div>"
             "<div class='card-value'>" + str(lo) + " to " + str(hi) + " F</div>"
-            "<div style='margin-top:10px;'>"
-            "<span class='badge'>Range only</span>"
-            "</div>"
+            "<div style='margin-top:10px;'><span class='badge'>Range only</span></div>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -478,46 +476,59 @@ def render_species_tips(name, db):
     section("Bottom", info.get("Bottom", ["No tips available."]))
     section("Quick tips", info.get("Quick", ["No tips available."]))
 
-def phone_speedometer_compact():
-    # Compact so it fits on screen and does not feel crowded by footer
+def phone_speedometer_widget():
     html = """
-    <div style="padding:12px;border:1px solid rgba(246,242,231,0.16);border-radius:18px;background:rgba(246,242,231,0.05);">
-      <div style="font-weight:900;font-size:18px;margin-bottom:8px;color:#f6f2e7;">Speedometer</div>
+    <div id="wrap" style="padding:12px;border:1px solid rgba(246,242,231,0.16);border-radius:18px;background:rgba(246,242,231,0.05);">
+      <style>
+        #wrap { --dial: 112px; --mph: 34px; --gap: 12px; }
+        @media (min-width: 720px) { #wrap { --dial: 160px; --mph: 44px; --gap: 16px; } }
+        .row { display:flex; align-items:center; gap: var(--gap); }
+        .dial {
+          width: var(--dial);
+          height: var(--dial);
+          border-radius: 999px;
+          border: 2px solid rgba(246,242,231,0.22);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+        }
+        .mph { font-size: var(--mph); font-weight: 900; line-height: 1.0; color:#f6f2e7; }
+      </style>
 
-      <div style="display:flex;align-items:center;gap:14px;">
-        <div style="width:108px;height:108px;border-radius:999px;border:2px solid rgba(246,242,231,0.22);display:flex;align-items:center;justify-content:center;">
+      <div style="font-weight:900;font-size:18px;margin-bottom:6px;color:#f6f2e7;">Speedometer</div>
+      <div id="status" style="opacity:0.88;margin-bottom:8px;color:#f6f2e7;">Allow location permission...</div>
+
+      <div class="row">
+        <div class="dial">
           <div style="text-align:center;">
-            <div id="mph" style="font-size:32px;font-weight:900;color:#f6f2e7;">--</div>
+            <div id="mph" class="mph">--</div>
             <div style="opacity:0.85;color:#f6f2e7;">mph</div>
           </div>
         </div>
 
         <div style="flex:1;">
-          <div id="status" style="opacity:0.88;color:#f6f2e7;">Requesting GPS...</div>
-          <div id="acc" style="opacity:0.78;margin-top:6px;color:#f6f2e7;">Accuracy: --</div>
+          <div id="acc" style="opacity:0.82;color:#f6f2e7;">Accuracy: --</div>
+          <div style="opacity:0.80;margin-top:6px;color:#f6f2e7;">If mph is --, start moving and wait a few seconds.</div>
         </div>
       </div>
     </div>
 
     <script>
-      function setText(id, txt){
-        var el = document.getElementById(id);
-        if (el) el.textContent = txt;
-      }
+      function setText(id, txt){ var el=document.getElementById(id); if(el) el.textContent = txt; }
 
       if (!navigator.geolocation) {
-        setText("status", "Geolocation not supported.");
+        setText("status", "Geolocation not supported on this device/browser.");
       } else {
         navigator.geolocation.watchPosition(
           function(pos) {
-            var spd = pos.coords.speed; // meters/sec, may be null
+            var spd = pos.coords.speed;
             var acc = pos.coords.accuracy;
 
             setText("acc", "Accuracy: " + Math.round(acc) + " m");
 
             if (spd === null || spd === undefined) {
               setText("mph", "--");
-              setText("status", "Speed not ready. Move a bit.");
+              setText("status", "GPS lock... keep moving.");
               return;
             }
 
@@ -525,23 +536,19 @@ def phone_speedometer_compact():
             setText("mph", mph.toFixed(1));
             setText("status", "GPS speed (live)");
           },
-          function(err) {
-            setText("status", "Location error: " + err.message);
-          },
+          function(err) { setText("status", "Location error: " + err.message); },
           { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 }
         );
       }
     </script>
     """
-    components.html(html, height=155)
+    components.html(html, height=240)
 
 # -------------------------------------------------
 # Session defaults
 # -------------------------------------------------
 if "tool" not in st.session_state:
     st.session_state["tool"] = "Best fishing times"
-if "loc_mode" not in st.session_state:
-    st.session_state["loc_mode"] = "Current location"
 if "lat" not in st.session_state:
     st.session_state["lat"] = None
 if "lon" not in st.session_state:
@@ -556,7 +563,7 @@ PAGE_TITLES = {
 }
 
 # -------------------------------------------------
-# Sidebar (pretty buttons, no radios)
+# Sidebar navigation (buttons)
 # -------------------------------------------------
 with st.sidebar:
     st.markdown("### FishyNW Tools")
@@ -576,36 +583,21 @@ with st.sidebar:
 
     if tool == "Best fishing times":
         st.divider()
-        st.markdown("#### Location")
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("Current location", use_container_width=True, key="loc_mode_current"):
-                st.session_state["loc_mode"] = "Current location"
-        with col_b:
-            if st.button("Place name", use_container_width=True, key="loc_mode_place"):
-                st.session_state["loc_mode"] = "Place name"
-
-        mode = st.session_state["loc_mode"]
-
-        if mode == "Current location":
-            if st.button(
-                "Display Best Fishing Times",
-                use_container_width=True,
-                type="primary",
-                key="btn_display_best_times",
-            ):
-                st.session_state["lat"], st.session_state["lon"] = get_location()
-        else:
-            place = st.text_input("Place name", placeholder="Example: Fernan Lake", key="place_name_input")
-            if st.button("Use place", use_container_width=True, key="btn_use_place"):
-                st.session_state["lat"], st.session_state["lon"] = geocode_place(place)
+        # ONLY ONE button for location now (per your request)
+        if st.button(
+            "Display Best Fishing Times",
+            use_container_width=True,
+            type="primary",
+            key="btn_display_best_times",
+        ):
+            st.session_state["lat"], st.session_state["lon"] = get_location()
 
         st.divider()
         selected_day = st.date_input("Date", value=date.today(), key="day_input")
 
 # -------------------------------------------------
-# Header row (logo left, title right)
+# Header row
 # -------------------------------------------------
 tool = st.session_state["tool"]
 page_title = PAGE_TITLES.get(tool, "FishyNW Tools")
@@ -627,7 +619,7 @@ if tool == "Best fishing times":
     lon = st.session_state.get("lon")
 
     if lat is None or lon is None:
-        st.info("Select a location from the menu.")
+        st.info("Tap 'Display Best Fishing Times' in the menu.")
     else:
         times = best_times(lat, lon, selected_day)
         if not times:
@@ -763,7 +755,7 @@ elif tool == "Species tips":
 else:
     st.markdown("### Speedometer")
     st.markdown("<div class='small'>GPS speed from your phone browser. Works best once GPS has a lock and you are moving.</div>", unsafe_allow_html=True)
-    phone_speedometer_compact()
+    phone_speedometer_widget()
 
 # -------------------------------------------------
 # Footer
