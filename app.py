@@ -1,16 +1,16 @@
 # app.py
 # FishyNW.com - Best Fishing Times, Trolling Depth, Water Temp Targeting, and Species Tips
-# Version 1.5
+# Version 1.6
 
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 
-APP_VERSION = "1.5"
+APP_VERSION = "1.6"
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-Transparent.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.5",
+    "User-Agent": "FishyNW-App-1.6",
     "Accept": "application/json",
 }
 
@@ -160,17 +160,12 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     - Shallower with thicker / higher test line (more drag)
     - Line type modifies drag too
     """
-
     if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0 or line_test_lb <= 0:
         return None
 
-    # Base drag by line material
     type_drag = {"Braid": 1.0, "Fluorocarbon": 1.12, "Monofilament": 1.2}[line_type]
 
-    # Line-test drag factor:
-    # Calibrated around 20 lb = neutral 1.0.
-    # Higher test = more drag = shallower.
-    # Lower test = less drag = deeper.
+    # 20 lb = neutral. Higher test runs shallower.
     test_ratio = line_test_lb / 20.0
     test_drag = test_ratio ** 0.35
 
@@ -438,7 +433,6 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-    # Location inputs ONLY when location matters
     if tool == "Best fishing times":
         st.divider()
         mode = st.radio("Location", ["Current location", "Place name"])
@@ -505,9 +499,10 @@ elif tool == "Trolling depth calculator":
     st.markdown("### Trolling depth calculator")
     st.markdown("<div class='small'>Location not required.</div>", unsafe_allow_html=True)
 
-    speed = st.number_input("Speed (mph)", 0.0, value=1.5, step=0.1)
-    weight = st.number_input("Weight (oz)", 0.0, value=8.0, step=0.5)
-    line_out = st.number_input("Line out (feet)", 0.0, value=120.0, step=5.0)
+    # Defaults updated per your request:
+    speed = st.number_input("Speed (mph)", 0.0, value=1.3, step=0.1)
+    weight = st.number_input("Weight (oz)", 0.0, value=2.0, step=0.5)
+    line_out = st.number_input("Line out (feet)", 0.0, value=100.0, step=5.0)
 
     col1, col2 = st.columns(2)
     with col1:
