@@ -1,14 +1,13 @@
 # app.py
 # FishyNW.com — Best Fishing Times & Trolling Tools
-# Brand-correct edition v2.6 (official logo)
-# Mobile-first, clean spacing, no blog input
+# Version 1.0 (FishyNW Brand Edition)
 
 import math
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 
-APP_VERSION = "2.6 FishyNW Brand Edition"
+APP_VERSION = "1.0"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-Transparent.png"
 
@@ -27,7 +26,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Styling (matched to FishyNW vibe)
+# Styling (mobile-first, clean spacing)
 # -------------------------------------------------
 st.markdown(
     """
@@ -132,9 +131,11 @@ def ip_geolocate():
 
 def geocode_place(place):
     try:
+        if not place or not place.strip():
+            return None, None
         url = (
             "https://geocoding-api.open-meteo.com/v1/search"
-            f"?name={requests.utils.quote(place)}&count=1&format=json"
+            f"?name={requests.utils.quote(place.strip())}&count=1&format=json"
         )
         d = safe_get_json(url, timeout=10)
         r = d.get("results", [])
@@ -222,7 +223,7 @@ st.markdown(
   <img src="{LOGO_URL}" alt="FishyNW logo">
 </div>
 <div class="small-muted" style="text-align:center;">
-  Northwest fishing tools • Built from firsthand experience
+  Northwest fishing tools • Built for real trips
 </div>
 """,
     unsafe_allow_html=True,
@@ -233,7 +234,7 @@ st.markdown(
 # -------------------------------------------------
 with st.sidebar:
     st.markdown("### FishyNW Tools")
-    st.caption(APP_VERSION)
+    st.caption(f"Version {APP_VERSION}")
 
     page = st.radio(
         "Tool",
@@ -241,6 +242,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
+    # Location inputs ONLY when location matters
     if page == "Best fishing times":
         st.divider()
         mode = st.radio("Location", ["Current location", "Place name"], label_visibility="collapsed")
@@ -339,3 +341,4 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+```0
