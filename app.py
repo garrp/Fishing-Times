@@ -1,8 +1,7 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Best Fishing Times, Trolling Depth, Water Temp Targeting, Species Tips
 # Version 1.6
-# ASCII ONLY. NO UNICODE.
+# ASCII ONLY. No special characters.
 
 from datetime import datetime, timedelta, date
 import requests
@@ -16,17 +15,13 @@ HEADERS = {
     "Accept": "application/json",
 }
 
-# -------------------------------------------------
-# Page config
-# -------------------------------------------------
+# ---------------- Page config ----------------
 st.set_page_config(
-    page_title="FishyNW Fishing Tools",
+    page_title="FishyNW.com | Fishing Tools",
     layout="centered",
 )
 
-# -------------------------------------------------
-# Styles (ASCII SAFE)
-# -------------------------------------------------
+# ---------------- Styles (ASCII SAFE) ----------------
 st.markdown(
     """
 <style>
@@ -36,26 +31,28 @@ st.markdown(
   --card: #0b2a26;
   --border: rgba(248,248,232,0.20);
   --text: #f8f8e8;
-  --muted: rgba(248,248,232,0.72);
-  --menu_text: rgba(248,248,232,0.95);
-  --menu_muted: rgba(248,248,232,0.80);
+  --muted: rgba(248,248,232,0.75);
+  --menu_text: rgba(248,248,232,0.96);
+  --menu_muted: rgba(248,248,232,0.82);
   --primary: #184840;
   --primary2: #104840;
   --accent: #688858;
 }
 
+/* App background */
 .stApp {
   background-color: var(--bg);
   color: var(--text);
 }
 
+/* Main container */
 .block-container {
-  padding-top: 2.6rem;
+  padding-top: 2.6rem;   /* lowers header area */
   padding-bottom: 2.5rem;
   max-width: 900px;
 }
 
-/* Sidebar: solid, non transparent */
+/* Sidebar: FORCE SOLID */
 section[data-testid="stSidebar"] {
   background-color: var(--sidebar) !important;
   width: 320px;
@@ -73,16 +70,16 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   color: var(--menu_muted) !important;
 }
 
-/* Header row (logo left, title right) */
+/* Header: logo left (smaller) and title right, lowered */
 .header {
   display: flex;
   align-items: flex-end;
   gap: 18px;
-  margin-top: 22px;   /* lower so logo is fully visible */
+  margin-top: 22px;
   margin-bottom: 10px;
 }
 .header-logo img {
-  max-width: 130px;   /* about 50 percent smaller */
+  max-width: 130px;
   width: 100%;
   height: auto;
   display: block;
@@ -147,13 +144,12 @@ button { border-radius: 14px; }
     unsafe_allow_html=True,
 )
 
-# -------------------------------------------------
-# Helpers
-# -------------------------------------------------
+# ---------------- Helpers ----------------
 def get_json(url, timeout=10):
     r = requests.get(url, headers=HEADERS, timeout=timeout)
     r.raise_for_status()
     return r.json()
+
 
 def get_location():
     try:
@@ -166,6 +162,7 @@ def get_location():
     except Exception:
         return None, None
 
+
 def geocode_place(name):
     try:
         url = "https://geocoding-api.open-meteo.com/v1/search?name=" + name + "&count=1&format=json"
@@ -176,6 +173,7 @@ def geocode_place(name):
         return res[0]["latitude"], res[0]["longitude"]
     except Exception:
         return None, None
+
 
 def get_sun_times(lat, lon, day_iso):
     url = (
@@ -194,6 +192,7 @@ def get_sun_times(lat, lon, day_iso):
     except Exception:
         return None, None
 
+
 def get_wind(lat, lon):
     url = (
         "https://api.open-meteo.com/v1/forecast"
@@ -211,8 +210,10 @@ def get_wind(lat, lon):
     except Exception:
         return {}
 
+
 def best_times(lat, lon, day_obj):
-    sr, ss = get_sun_times(lat, lon, day_obj.isoformat())
+    day_iso = day_obj.isoformat()
+    sr, ss = get_sun_times(lat, lon, day_iso)
     if not sr or not ss:
         return None
     return {
@@ -220,21 +221,22 @@ def best_times(lat, lon, day_obj):
         "evening": (ss - timedelta(hours=1), ss + timedelta(hours=1)),
     }
 
+
 def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0 or line_test_lb <= 0:
         return None
 
     type_drag = {"Braid": 1.0, "Fluorocarbon": 1.12, "Monofilament": 1.2}[line_type]
-
     test_ratio = line_test_lb / 20.0
     test_drag = test_ratio ** 0.35
     total_drag = type_drag * test_drag
-
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
+
 def c_to_f(c):
     return (c * 9.0 / 5.0) + 32.0
+
 
 def temp_rating(temp_f, lo, hi):
     if lo <= temp_f <= hi:
@@ -242,6 +244,7 @@ def temp_rating(temp_f, lo, hi):
     if (lo - 5) <= temp_f < lo or hi < temp_f <= (hi + 5):
         return "Fair"
     return "Low"
+
 
 def temp_targets(temp_f):
     t = temp_f
@@ -255,7 +258,7 @@ def temp_targets(temp_f):
     add("Kokanee", 42, 55, "Cool water. Often deeper when surface warms.")
     add("Chinook salmon", 44, 58, "Cool water. Often deeper and near current.")
     add("Lake trout", 42, 55, "Cold water. Usually deeper structure.")
-    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind blown banks.")
+    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind-blown banks.")
     add("Largemouth bass", 65, 80, "Warm water. Weeds and shallow cover.")
     add("Walleye", 55, 70, "Mid temps. Low light windows are strong.")
     add("Panfish (perch/bluegill)", 60, 80, "Warm water. Shallows and cover.")
@@ -265,11 +268,12 @@ def temp_targets(temp_f):
     items.sort(key=lambda x: rank[x[1]])
     return items
 
+
 def species_tip_db():
     return {
         "Kokanee": {
             "temp_f": (42, 55),
-            "Top": ["Usually not a topwater fish. Focus mid water columns."],
+            "Top": ["Usually not a topwater fish. Focus mid-water columns."],
             "Mid": [
                 "Troll dodger plus small hoochie or spinner behind it.",
                 "Run scent and tune speed until you get a steady rod thump.",
@@ -291,7 +295,7 @@ def species_tip_db():
                 "Troll small spoons or spinners at 1.2 to 1.8 mph.",
                 "Use longer leads if the water is clear."
             ],
-            "Bottom": ["Still fish bait just off bottom near structure or drop offs."],
+            "Bottom": ["Still fish bait just off bottom near structure or drop-offs."],
             "Quick": [
                 "If bites stop, change lure color or adjust speed slightly.",
                 "Follow food and temperature changes."
@@ -424,6 +428,7 @@ def species_tip_db():
         },
     }
 
+
 def render_species_tips(name, db):
     info = db.get(name)
     if not info:
@@ -440,7 +445,6 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
-    st.markdown("#### Activity temperature")
     st.markdown("<div class='small'>Enter water temp to see if this species is in its best range.</div>", unsafe_allow_html=True)
     temp_f = st.number_input("Water temp (F) for this species", value=58.0, step=0.5)
 
@@ -465,9 +469,11 @@ def render_species_tips(name, db):
     section("Bottom", info.get("Bottom", ["No tips available."]))
     section("Quick tips", info.get("Quick", ["No tips available."]))
 
-# -------------------------------------------------
-# Sidebar
-# -------------------------------------------------
+
+# ---------------- Sidebar + state ----------------
+if "selected_day" not in st.session_state:
+    st.session_state["selected_day"] = date.today()
+
 with st.sidebar:
     st.markdown("### FishyNW Tools")
     st.caption("Version " + APP_VERSION)
@@ -491,11 +497,11 @@ with st.sidebar:
                 st.session_state["lat"], st.session_state["lon"] = geocode_place(place)
 
         st.divider()
-        selected_day = st.date_input("Date", value=date.today())
+        st.session_state["selected_day"] = st.date_input("Date", value=st.session_state["selected_day"])
 
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
+selected_day = st.session_state["selected_day"]
+
+# ---------------- Header (logo left, title right) ----------------
 PAGE_TITLES = {
     "Best fishing times": "Best Fishing Times",
     "Trolling depth calculator": "Trolling Depth Calculator",
@@ -512,9 +518,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# -------------------------------------------------
-# Main content
-# -------------------------------------------------
+# ---------------- Main content ----------------
 if tool == "Best fishing times":
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
@@ -549,7 +553,9 @@ if tool == "Best fishing times":
                 unsafe_allow_html=True,
             )
 
-            st.markdown("### Wind (mph)")
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='small'>Wind (mph) every 4 hours</div>", unsafe_allow_html=True)
+
             wind = get_wind(lat, lon)
             for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
                 st.markdown(
@@ -560,7 +566,6 @@ if tool == "Best fishing times":
                 )
 
 elif tool == "Trolling depth calculator":
-    st.markdown("### Trolling depth calculator")
     st.markdown("<div class='small'>Location not required.</div>", unsafe_allow_html=True)
 
     speed = st.number_input("Speed (mph)", 0.0, value=1.3, step=0.1)
@@ -585,7 +590,6 @@ elif tool == "Trolling depth calculator":
     )
 
 elif tool == "Water temperature targeting":
-    st.markdown("### Water temperature targeting")
     st.markdown("<div class='small'>Enter water temperature and get target species suggestions.</div>", unsafe_allow_html=True)
 
     unit = st.radio("Units", ["F", "C"], horizontal=True)
@@ -603,13 +607,13 @@ elif tool == "Water temperature targeting":
     )
 
     targets = temp_targets(temp_f)
-    best_list = [x for x in targets if x[1] == "Best"]
-    fair_list = [x for x in targets if x[1] == "Fair"]
-    low_list = [x for x in targets if x[1] == "Low"]
+    best = [x for x in targets if x[1] == "Best"]
+    fair = [x for x in targets if x[1] == "Fair"]
+    low = [x for x in targets if x[1] == "Low"]
 
-    if best_list:
-        st.markdown("#### Best targets")
-        for name, rating, note in best_list:
+    if best:
+        st.markdown("<div class='small'>Best targets</div>", unsafe_allow_html=True)
+        for name, rating, note in best:
             st.markdown(
                 "<div class='card'>"
                 "<div class='card-title'>" + name + "</div>"
@@ -619,9 +623,9 @@ elif tool == "Water temperature targeting":
                 unsafe_allow_html=True,
             )
 
-    if fair_list:
-        st.markdown("#### Fair targets")
-        for name, rating, note in fair_list:
+    if fair:
+        st.markdown("<div class='small'>Fair targets</div>", unsafe_allow_html=True)
+        for name, rating, note in fair:
             st.markdown(
                 "<div class='card'>"
                 "<div class='card-title'>" + name + "</div>"
@@ -631,9 +635,9 @@ elif tool == "Water temperature targeting":
                 unsafe_allow_html=True,
             )
 
-    if low_list and not best_list:
-        st.markdown("#### Low targets")
-        for name, rating, note in low_list[:4]:
+    if low and not best:
+        st.markdown("<div class='small'>Low targets</div>", unsafe_allow_html=True)
+        for name, rating, note in low[:4]:
             st.markdown(
                 "<div class='card'>"
                 "<div class='card-title'>" + name + "</div>"
@@ -644,7 +648,6 @@ elif tool == "Water temperature targeting":
             )
 
 else:
-    st.markdown("### Species tips")
     st.markdown("<div class='small'>Pick a species and get tips plus best activity temperature range.</div>", unsafe_allow_html=True)
 
     db = species_tip_db()
@@ -653,9 +656,7 @@ else:
 
     render_species_tips(species, db)
 
-# -------------------------------------------------
-# Footer
-# -------------------------------------------------
+# ---------------- Footer ----------------
 st.markdown(
     "<div class='footer'><strong>FishyNW.com</strong><br>"
     "Independent Northwest fishing tools</div>",
