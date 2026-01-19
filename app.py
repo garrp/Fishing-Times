@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytz
@@ -13,10 +13,21 @@ import ephem
 
 
 # ============================================================
-# App config
+# FishyNW - Version 2.0
+# - Sidebar primary menu:
+#   1) Best Fishing Times (date + city/state + static chart + wind every 4 hours)
+#   2) Depth Calculator (depth from speed + weight + line out + line type)
+# - Uses FishyNW-logo.png (with safe fallback)
+# - One-file app.py
 # ============================================================
-st.set_page_config(page_title="FishyNW", layout="wide")
 
+st.set_page_config(page_title="FishyNW", layout="wide")
+TZ = pytz.timezone("America/Los_Angeles")
+
+
+# ----------------------------
+# Styling
+# ----------------------------
 st.markdown(
     """
 <style>
@@ -42,12 +53,10 @@ hr { border: none; border-top: 1px solid rgba(255,255,255,.10); margin: 12px 0; 
     unsafe_allow_html=True,
 )
 
-TZ = pytz.timezone("America/Los_Angeles")
 
-
-# ============================================================
+# ----------------------------
 # Shared helpers
-# ============================================================
+# ----------------------------
 def clamp(x, a, b):
     return max(a, min(b, x))
 
@@ -82,7 +91,7 @@ def show_logo():
 
 
 # ============================================================
-# BEST FISHING TIMES (keeps: location + date + wind + chart)
+# Page 1: Best Fishing Times
 # ============================================================
 def geocode_city_state(city, state):
     city = (city or "").strip()
@@ -91,7 +100,11 @@ def geocode_city_state(city, state):
         raise ValueError("Enter City and State.")
 
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    r = requests.get(url, params={"name": city, "count": 20, "language": "en", "format": "json"}, timeout=10)
+    r = requests.get(
+        url,
+        params={"name": city, "count": 20, "language": "en", "format": "json"},
+        timeout=10,
+    )
     r.raise_for_status()
     results = r.json().get("results", []) or []
     if not results:
@@ -223,8 +236,7 @@ def page_best_fishing_times():
     st.markdown("<div class='fishynw-card'>", unsafe_allow_html=True)
     show_logo()
     st.markdown("<h2>Best Fishing Times</h2>", unsafe_allow_html=True)
-    st.markdown("<div class='muted'>Location + date + bite index graph + wind every four hours.</div>",
-                unsafe_allow_html=True)
+    st.markdown("<div class='muted'>Date + City/State + bite index chart + wind every four hours.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns([1, 1], gap="large")
@@ -232,13 +244,11 @@ def page_best_fishing_times():
         day = st.date_input("Date", value=datetime.now(TZ).date(), key="bft_date")
         city = st.text_input("City", "Coeur d'Alene", key="bft_city")
         state = st.text_input("State", "ID", key="bft_state")
-
     with c2:
         st.markdown("<div class='fishynw-card'>", unsafe_allow_html=True)
-        st.markdown("**What you get**", unsafe_allow_html=True)
-        st.markdown("- Static chart image (no dragging/zooming)")
+        st.markdown("**Outputs**")
+        st.markdown("- Static chart image")
         st.markdown("- Wind bullets every 4 hours")
-        st.markdown("- City + State location")
         st.markdown("</div>", unsafe_allow_html=True)
 
     if st.button("Generate", type="primary", key="bft_go"):
@@ -271,13 +281,9 @@ def page_best_fishing_times():
 
 
 # ============================================================
-# DEPTH CALCULATOR (separate menu/page/app inside same app.py)
+# Page 2: Depth Calculator
 # ============================================================
 def line_type_factor(line_type: str) -> float:
-    """
-    Lower factor = cuts water better = goes deeper for same setup.
-    Simple approximation.
-    """
     lt = (line_type or "").lower()
     if "braid" in lt:
         return 1.00
@@ -289,31 +295,23 @@ def line_type_factor(line_type: str) -> float:
 
 
 def estimate_depth_ft(speed_mph: float, weight_oz: float, line_out_ft: float, line_type: str) -> float:
-    """
-    Estimate depth from speed + weight + line out + line type.
-    This is a consistent fishing calculator (not a physics simulator).
-    """
     speed_mph = max(0.1, float(speed_mph))
     weight_oz = max(0.1, float(weight_oz))
     line_out_ft = max(0.0, float(line_out_ft))
 
     lf = line_type_factor(line_type)
 
-    # Tuned to be reasonable in 0.8–2.5 mph trolling range
+    # Simple, consistent trolling-depth estimator (not a physics simulator)
     depth_ratio = (0.86 * (weight_oz ** 0.55)) / (speed_mph ** 0.75) / lf
-    depth = line_out_ft * clamp(depth_ratio, 0.05, 0.95)
-    return max(0.0, depth)
+    depth_ratio = clamp(depth_ratio, 0.05, 0.95)
+    return max(0.0, line_out_ft * depth_ratio)
 
 
 def page_depth_calculator():
     st.markdown("<div class='fishynw-card'>", unsafe_allow_html=True)
     show_logo()
     st.markdown("<h2>Depth Calculator</h2>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='muted'>Enter speed, weight, line type, and line out. "
-        "The calculator estimates the depth you are running.</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div class='muted'>Estimate depth from speed, weight, line out, and line type.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns([1, 1, 1, 1], gap="large")
@@ -341,23 +339,20 @@ def page_depth_calculator():
 
 
 # ============================================================
-# Sidebar primary menu (this is what you asked for)
-# - Tab 1: Current app (location/date/wind/best fishing times)
-# - Tab 2: Separate depth calculator app/page
+# Primary menu (sidebar)
 # ============================================================
 with st.sidebar:
     st.markdown("## FishyNW")
-    menu = st.radio(
-        "Primary menu",
-        ["Best Fishing Times", "Depth Calculator"],
-        index=0,
-    )
+    menu = st.radio("Menu", ["Best Fishing Times", "Depth Calculator"], index=0)
 
 if menu == "Best Fishing Times":
     page_best_fishing_times()
 else:
     page_depth_calculator()
 
+# ----------------------------
+# Footer
+# ----------------------------
 st.markdown(
     """
 <div class="footer">
