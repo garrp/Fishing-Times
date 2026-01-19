@@ -1,9 +1,8 @@
 # app.py
-# FishyNW.com - Best Fishing Times, Trolling Depth, and Speedometer
+# FishyNW.com - Best Fishing Times, Trolling Depth, and Direction Indicator
 # Version 1.1
 
 from datetime import datetime, timedelta, date
-import math
 import requests
 import streamlit as st
 
@@ -57,6 +56,66 @@ section[data-testid="stSidebar"] { width: 320px; }
   opacity: 0.7;
 }
 button { border-radius: 14px; }
+
+/* Simple compass circle */
+.compass-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+.compass {
+  width: 260px;
+  height: 260px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.03);
+  position: relative;
+}
+.compass .tick {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  font-weight: 800;
+  opacity: 0.75;
+}
+.compass .needle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-origin: 50% 90%;
+}
+.compass .needle:before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: -110px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 110px solid rgba(255,255,255,0.85);
+}
+.compass .center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  background: rgba(255,255,255,0.85);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+.compass-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 260px;
+  margin: 10px auto 0 auto;
+  opacity: 0.75;
+  font-weight: 700;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -132,7 +191,6 @@ def get_wind(lat, lon):
         return out
     except Exception:
         return {}
-    return {}
 
 
 def best_times(lat, lon, day_obj):
@@ -154,16 +212,29 @@ def trolling_depth(speed, weight, line_out, line_type):
     return round(depth, 1)
 
 
-def mph_to_fps(mph):
-    return mph * 5280.0 / 3600.0
+def heading_to_cardinal(deg):
+    # 0=N, 90=E, 180=S, 270=W
+    deg = deg % 360
+    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    idx = int((deg + 22.5) // 45) % 8
+    return dirs[idx]
 
 
-def format_mph(v):
-    try:
-        return f"{float(v):.2f}"
-    except Exception:
-        return "--"
+def angle_diff(a, b):
+    # smallest diff between headings (0-180)
+    d = abs((a - b) % 360)
+    return min(d, 360 - d)
 
+
+def wind_relation(heading, wind_from):
+    # wind_from is direction wind is coming FROM.
+    # into-wind means your heading is toward wind_from.
+    diff = angle_diff(heading, wind_from)
+    if diff <= 25:
+        return "Into the wind"
+    if diff >= 155:
+        return "With the wind"
+    return "Crosswind"
 
 # -------------------------------------------------
 # Header
@@ -183,7 +254,7 @@ with st.sidebar:
 
     tool = st.radio(
         "Tool",
-        ["Best fishing times", "Trolling depth calculator", "Speedometer"],
+        ["Best fishing times", "Trolling depth calculator", "Directional indicator"],
         label_visibility="collapsed",
     )
 
@@ -271,58 +342,53 @@ elif tool == "Trolling depth calculator":
     )
 
 else:
-    st.markdown("### Speedometer")
-    st.markdown("<div class='small'>Enter your current speed to display a large readout.</div>", unsafe_allow_html=True)
+    st.markdown("### Directional indicator")
+    st.markdown("<div class='small'>Location not required. Enter a heading to display a simple compass.</div>", unsafe_allow_html=True)
 
-    speed_mode = st.radio("Mode", ["Manual speed", "Cadence helper"], horizontal=True)
+    mode = st.radio("Mode", ["Manual heading", "Heading with wind helper"], horizontal=True)
 
-    if speed_mode == "Manual speed":
-        spd = st.number_input("Speed (mph)", 0.0, value=1.50, step=0.05)
+    heading = st.number_input("Heading (degrees)", 0, 359, value=0, step=1)
+    cardinal = heading_to_cardinal(heading)
+
+    # Compass display (needle rotates)
+    st.markdown(
+        "<div class='card'>"
+        "<div class='card-title'>Current heading</div>"
+        "<div class='big-value'>" + str(heading) + " deg (" + cardinal + ")</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        "<div class='compass-wrap'>"
+        "<div class='compass'>"
+        "<div class='tick'>N</div>"
+        "<div class='needle' style='transform: translate(-50%, -50%) rotate(" + str(heading) + "deg);'></div>"
+        "<div class='center'></div>"
+        "</div>"
+        "</div>"
+        "<div class='compass-labels'><span>W</span><span>E</span></div>"
+        "<div class='compass-labels'><span>S</span><span></span></div>",
+        unsafe_allow_html=True,
+    )
+
+    if mode == "Heading with wind helper":
+        st.markdown("<div class='small' style='margin-top:10px;'>Wind helper uses your fishing-times location if set.</div>", unsafe_allow_html=True)
+
+        lat = st.session_state.get("lat")
+        lon = st.session_state.get("lon")
+
+        wind_from = st.number_input("Wind direction FROM (degrees)", 0, 359, value=0, step=1)
+        relation = wind_relation(heading, wind_from)
 
         st.markdown(
             "<div class='card'>"
-            "<div class='card-title'>Current speed</div>"
-            "<div class='big-value'>" + format_mph(spd) + " mph</div>"
+            "<div class='card-title'>Wind vs heading</div>"
+            "<div class='card-value'>" + relation + "</div>"
+            "<div class='small' style='margin-top:8px;'>This is a simple heading comparison. Use it to decide trolling passes.</div>"
             "</div>",
             unsafe_allow_html=True,
         )
-
-        st.markdown(
-            "<div class='card'>"
-            "<div class='card-title'>Trolling target</div>"
-            "<div class='card-value'>1.2 to 1.8 mph</div>"
-            "<div class='small' style='margin-top:8px;'>Most trolling stays in this range. Dial it in for your lure and depth.</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-    else:
-        st.markdown("<div class='small'>This helps you hold a steady pace by matching a rhythm.</div>", unsafe_allow_html=True)
-
-        method = st.radio("Drive type", ["Pedal (RPM)", "Paddle (strokes per minute)"], horizontal=True)
-
-        if method == "Pedal (RPM)":
-            rpm = st.number_input("Pedal cadence (RPM)", 0.0, value=45.0, step=1.0)
-            mph_est = rpm * 0.03
-            st.markdown(
-                "<div class='card'>"
-                "<div class='card-title'>Estimated speed</div>"
-                "<div class='big-value'>" + format_mph(mph_est) + " mph</div>"
-                "<div class='small' style='margin-top:8px;'>This is a rough estimate. Calibrate it one time using GPS, then keep the same RPM.</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            spm = st.number_input("Strokes per minute", 0.0, value=30.0, step=1.0)
-            mph_est = spm * 0.04
-            st.markdown(
-                "<div class='card'>"
-                "<div class='card-title'>Estimated speed</div>"
-                "<div class='big-value'>" + format_mph(mph_est) + " mph</div>"
-                "<div class='small' style='margin-top:8px;'>Rough estimate. Calibrate once, then keep your rhythm steady.</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
 
 # -------------------------------------------------
 # Footer
