@@ -1,3 +1,6 @@
+# app.py — FishyNW v2.0 (Streamlit Cloud compatible)
+# Fix applied: requirements should use "ephem" (NOT pyephem)
+
 import math
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,11 +17,10 @@ import ephem
 
 # ============================================================
 # FishyNW - Version 2.0
-# - Sidebar primary menu:
+# - Sidebar menu:
 #   1) Best Fishing Times (date + city/state + static chart + wind every 4 hours)
 #   2) Depth Calculator (depth from speed + weight + line out + line type)
-# - Uses FishyNW-logo.png (with safe fallback)
-# - One-file app.py
+# - Uses FishyNW-logo.png (safe fallback)
 # ============================================================
 
 st.set_page_config(page_title="FishyNW", layout="wide")
@@ -71,8 +73,10 @@ def minutes_since_midnight(dt, tz):
 
 
 def deg_to_compass(deg):
-    dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    dirs = [
+        "N","NNE","NE","ENE","E","ESE","SE","SSE",
+        "S","SSW","SW","WSW","W","WNW","NW","NNW"
+    ]
     ix = int((deg / 22.5) + 0.5) % 16
     return dirs[ix]
 
@@ -127,11 +131,13 @@ def get_events(day, lat, lon, tz):
     loc = LocationInfo("", "", tz.zone, lat, lon)
     s = sun(loc.observer, date=day, tzinfo=tz)
 
+    # ephem observer setup (works with the "ephem" package)
     obs = ephem.Observer()
     obs.lat, obs.lon = str(lat), str(lon)
     obs.date = tz.localize(datetime(day.year, day.month, day.day)).astimezone(pytz.utc)
 
     moon = ephem.Moon()
+
     moonrise = moonset = None
     try:
         moonrise = ephem.Date(obs.next_rising(moon)).datetime().replace(tzinfo=pytz.utc).astimezone(tz)
@@ -142,6 +148,7 @@ def get_events(day, lat, lon, tz):
     except Exception:
         pass
 
+    # Approximate "overhead" and "underfoot" by scanning moon altitude across the day
     best_hi = (-999.0, None)
     best_lo = (999.0, None)
     t = tz.localize(datetime(day.year, day.month, day.day, 0, 0, 0))
@@ -236,7 +243,10 @@ def page_best_fishing_times():
     st.markdown("<div class='fishynw-card'>", unsafe_allow_html=True)
     show_logo()
     st.markdown("<h2>Best Fishing Times</h2>", unsafe_allow_html=True)
-    st.markdown("<div class='muted'>Date + City/State + bite index chart + wind every four hours.</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='muted'>Date + City/State + bite index chart + wind every four hours.</div>",
+        unsafe_allow_html=True,
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns([1, 1], gap="large")
@@ -311,7 +321,10 @@ def page_depth_calculator():
     st.markdown("<div class='fishynw-card'>", unsafe_allow_html=True)
     show_logo()
     st.markdown("<h2>Depth Calculator</h2>", unsafe_allow_html=True)
-    st.markdown("<div class='muted'>Estimate depth from speed, weight, line out, and line type.</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='muted'>Estimate depth from speed, weight, line out, and line type.</div>",
+        unsafe_allow_html=True,
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns([1, 1, 1, 1], gap="large")
@@ -339,7 +352,7 @@ def page_depth_calculator():
 
 
 # ============================================================
-# Primary menu (sidebar)
+# Sidebar menu
 # ============================================================
 with st.sidebar:
     st.markdown("## FishyNW")
