@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.6 (ASCII-safe, nuclear clean)
+# Version 1.6 (ASCII-safe, solid sidebar)
 
 from datetime import datetime, timedelta, date
 import requests
@@ -30,8 +30,9 @@ st.markdown(
 <style>
 :root {
   --bg: #061A18;
-  --card: rgba(16,64,56,0.35);
-  --border: rgba(248,248,232,0.16);
+  --sidebar: #041412;
+  --card: #0B2A26;
+  --border: rgba(248,248,232,0.18);
   --text: #F8F8E8;
   --muted: rgba(248,248,232,0.72);
   --primary: #184840;
@@ -39,27 +40,38 @@ st.markdown(
   --accent: #688858;
 }
 
+/* App background */
 .stApp {
   background-color: var(--bg);
   color: var(--text);
 }
 
+/* Main container */
 .block-container {
   padding-top: 1.5rem;
   padding-bottom: 2.5rem;
   max-width: 720px;
 }
 
+/* Sidebar - FORCE SOLID */
 section[data-testid="stSidebar"] {
+  background-color: var(--sidebar) !important;
   width: 320px;
-  background: rgba(0,0,0,0.18);
+  border-right: 1px solid var(--border);
 }
 
+/* Sidebar content wrapper */
+section[data-testid="stSidebar"] > div {
+  background-color: var(--sidebar) !important;
+}
+
+/* Text helpers */
 .small {
   color: var(--muted);
   font-size: 0.95rem;
 }
 
+/* Logo */
 .logo {
   text-align: center;
   margin-bottom: 18px;
@@ -70,9 +82,10 @@ section[data-testid="stSidebar"] {
   width: 70%;
 }
 
+/* Cards */
 .card {
   border: 1px solid var(--border);
-  background: var(--card);
+  background-color: var(--card);
   border-radius: 18px;
   padding: 16px;
   margin-top: 14px;
@@ -88,15 +101,7 @@ section[data-testid="stSidebar"] {
   font-weight: 800;
 }
 
-.footer {
-  margin-top: 40px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
-  text-align: center;
-  font-size: 0.95rem;
-  opacity: 0.8;
-}
-
+/* Buttons */
 button {
   border-radius: 14px;
 }
@@ -111,15 +116,14 @@ button {
   background-color: var(--primary2);
 }
 
-.badge {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(104,136,88,0.16);
-  margin: 6px 6px 0 0;
-  font-weight: 800;
-  font-size: 0.92rem;
+/* Footer */
+.footer {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 0.95rem;
+  opacity: 0.8;
 }
 </style>
 """,
@@ -207,7 +211,6 @@ def best_times(lat, lon, day_obj):
         "evening": (ss - timedelta(hours=1), ss + timedelta(hours=1)),
     }
 
-
 # -------------------------------------------------
 # Header
 # -------------------------------------------------
@@ -223,12 +226,6 @@ st.markdown(
 with st.sidebar:
     st.markdown("### FishyNW Tools")
     st.caption("Version " + APP_VERSION)
-
-    tool = st.radio(
-        "Tool",
-        ["Best fishing times"],
-        label_visibility="collapsed",
-    )
 
     st.divider()
     mode = st.radio("Location", ["Current location", "Place name"])
