@@ -46,10 +46,6 @@ def safe_read_logo(path: str):
 # -----------------------------
 @st.cache_data(ttl=86400)
 def geocode_city(city: str):
-    """
-    Open-Meteo geocoding (no key). Cached 24h.
-    Returns (label, lat, lon) or (None, None, None).
-    """
     if not city or not city.strip():
         return None, None, None
 
@@ -77,11 +73,6 @@ def geocode_city(city: str):
 
 @st.cache_data(ttl=1800)
 def fetch_weather(lat: float, lon: float, day: date):
-    """
-    Open-Meteo forecast (no key). Cached 30m.
-    Returns JSON with hourly wind speed + direction, plus sunrise/sunset.
-    Returns None on failure.
-    """
     start = day.isoformat()
     end = (day + timedelta(days=1)).isoformat()
 
@@ -120,7 +111,6 @@ def wind_dir_to_text(deg: float):
 
 
 def clamp_dt_to_day(dt_obj: datetime, target_day: date):
-    """Force dt to have the same date as target_day while preserving time."""
     return datetime(
         year=target_day.year,
         month=target_day.month,
@@ -132,10 +122,6 @@ def clamp_dt_to_day(dt_obj: datetime, target_day: date):
 
 
 def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: date, species: str):
-    """
-    Returns a list of windows: (label, start_dt, end_dt, weight)
-    weight is a rough "goodness" score (for graph shading)
-    """
     dawn_start = sunrise - timedelta(hours=1)
     dawn_end = sunrise + timedelta(hours=1, minutes=30)
 
@@ -189,10 +175,6 @@ def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: dat
 
 
 def wind_every_n_hours(times, speeds, dirs, target_day: date, step_hours: int):
-    """
-    Pick entries every N hours and keep only target_day.
-    Returns list of (datetime, mph, dir_text)
-    """
     step = max(1, int(step_hours))
     out = []
     for i in range(0, len(times), step):
@@ -212,7 +194,7 @@ def make_fishing_graph(target_day: date, windows):
     ax.plot([start, end], [0, 0])
 
     for _, s_dt, e_dt, weight in windows:
-        ax.axvspan(s_dt, e_dt, alpha=max(0.08, min(0.35, weight * 0.35)))
+        ax.axvspan(s_dt, e_dt, alpha=max(0.10, min(0.38, weight * 0.38)))
 
     ax.set_ylim(-1, 1)
     ax.set_yticks([])
@@ -247,17 +229,70 @@ def species_note(species: str):
 # -----------------------------
 st.set_page_config(page_title=APP_TITLE, layout="centered")
 
-# Header
+# Brand styling (safe, simple)
+st.markdown(
+    """
+    <style>
+    /* Slightly tighten the top padding */
+    .block-container { padding-top: 1.0rem; }
+
+    /* Brand button */
+    .stButton>button {
+        background-color: #1f4fd8;
+        color: white;
+        border-radius: 8px;
+        font-weight: 700;
+        border: 0px;
+        padding: 0.55rem 0.9rem;
+    }
+    .stButton>button:hover {
+        background-color: #163aa6;
+        color: white;
+    }
+
+    /* Sidebar headings */
+    section[data-testid="stSidebar"] h2, 
+    section[data-testid="stSidebar"] h3, 
+    section[data-testid="stSidebar"] h4 {
+        margin-top: 0.5rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Branded header
 logo = safe_read_logo(LOGO_FILENAME)
 if logo:
-    st.image(logo, use_container_width=True)
+    col_logo, col_title = st.columns([1, 4])
+    with col_logo:
+        st.image(logo, width=120)
+    with col_title:
+        st.markdown(
+            f"""
+            <h2 style="margin: 0; padding: 0;">FishyNW Fishing Times</h2>
+            <div style="color:#6c757d; margin-top: 0.2rem;">
+                Version {APP_VERSION} • Best fishing windows + wind outlook
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+else:
+    st.title("FishyNW Fishing Times")
+    st.caption(f"Version {APP_VERSION}")
 
-st.title(APP_TITLE)
-st.caption("Version 1.0 • One day only • Best fishing times graph • Wind listed every 2 hours")
+st.divider()
 
-# Sidebar inputs (v1.0 layout polish)
+# Sidebar inputs
 with st.sidebar:
-    st.subheader("Inputs")
+    st.markdown(
+        """
+        <div style="font-weight:800; font-size:16px; margin-bottom:10px;">
+        FishyNW Controls
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     city = st.text_input("City / place name", "Coeur d'Alene, ID")
     manual = st.checkbox("Use manual lat/lon")
