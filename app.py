@@ -801,4 +801,3 @@ st.markdown(
     "Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
-```0
