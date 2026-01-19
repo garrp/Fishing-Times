@@ -1,7 +1,8 @@
+
 # app.py
 # FishyNW.com - Fishing Tools
 # Version 1.6
-# ASCII ONLY. No special characters.
+# ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
 import requests
@@ -15,13 +16,17 @@ HEADERS = {
     "Accept": "application/json",
 }
 
-# ---------------- Page config ----------------
+# -------------------------------------------------
+# Page config
+# -------------------------------------------------
 st.set_page_config(
     page_title="FishyNW.com | Fishing Tools",
     layout="centered",
 )
 
-# ---------------- Styles (ASCII SAFE) ----------------
+# -------------------------------------------------
+# Styles (ASCII SAFE)
+# -------------------------------------------------
 st.markdown(
     """
 <style>
@@ -52,7 +57,7 @@ st.markdown(
   max-width: 900px;
 }
 
-/* Sidebar: FORCE SOLID */
+/* Sidebar: force solid background (not transparent) */
 section[data-testid="stSidebar"] {
   background-color: var(--sidebar) !important;
   width: 320px;
@@ -70,7 +75,7 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   color: var(--menu_muted) !important;
 }
 
-/* Header: logo left and title right, lowered */
+/* Header: logo left (smaller) and title right, lowered */
 .header {
   display: flex;
   align-items: flex-end;
@@ -91,7 +96,10 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {
   padding-bottom: 6px;
 }
 
-.small { color: var(--muted); font-size: 0.95rem; }
+.small {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
 
 /* Cards */
 .card {
@@ -117,7 +125,9 @@ button { border-radius: 14px; }
   color: var(--text) !important;
   border: 1px solid rgba(248,248,232,0.22);
 }
-.stButton > button:hover { background-color: var(--primary2); }
+.stButton > button:hover {
+  background-color: var(--primary2);
+}
 
 /* Tips */
 .tip-h { font-weight: 800; margin-top: 10px; }
@@ -150,7 +160,9 @@ button { border-radius: 14px; }
     unsafe_allow_html=True,
 )
 
-# ---------------- Helpers ----------------
+# -------------------------------------------------
+# Helpers
+# -------------------------------------------------
 def get_json(url, timeout=10):
     r = requests.get(url, headers=HEADERS, timeout=timeout)
     r.raise_for_status()
@@ -236,6 +248,7 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     test_ratio = line_test_lb / 20.0
     test_drag = test_ratio ** 0.35
     total_drag = type_drag * test_drag
+
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
@@ -283,28 +296,28 @@ def species_tip_db():
             "Mid": [
                 "Troll dodger plus small hoochie or spinner behind it.",
                 "Run scent and tune speed until you get a steady rod thump.",
-                "If marks are mid column, match depth with weights or a downrigger."
+                "If marks are mid column, match depth with weights or a downrigger.",
             ],
             "Bottom": ["Not a bottom target. If they are deep, still fish just above them."],
             "Quick": [
                 "Speed is everything. Small changes can turn on the bite.",
-                "If you see fish at 35 ft, set gear at about 30 to 33 ft."
+                "If you see fish at 35 ft, set gear at about 30 to 33 ft.",
             ],
         },
         "Rainbow trout": {
             "temp_f": (45, 65),
             "Top": [
                 "When they are up, cast small spinners, spoons, or floating minnows.",
-                "Early morning wind lanes can be strong."
+                "Early morning wind lanes can be strong.",
             ],
             "Mid": [
                 "Troll small spoons or spinners at 1.2 to 1.8 mph.",
-                "Use longer leads if the water is clear."
+                "Use longer leads if the water is clear.",
             ],
             "Bottom": ["Still fish bait just off bottom near structure or drop-offs."],
             "Quick": [
                 "If bites stop, change lure color or adjust speed slightly.",
-                "Follow food and temperature changes."
+                "Follow food and temperature changes.",
             ],
         },
         "Lake trout": {
@@ -312,15 +325,15 @@ def species_tip_db():
             "Top": ["Rare topwater. Most action is deep."],
             "Mid": [
                 "If bait is suspended, troll big spoons or tubes through the marks.",
-                "Wide turns often trigger strikes."
+                "Wide turns often trigger strikes.",
             ],
             "Bottom": [
                 "Work structure: humps, points, deep breaks.",
-                "Jig heavy tubes or blade baits on bottom, then lift and drop."
+                "Jig heavy tubes or blade baits on bottom, then lift and drop.",
             ],
             "Quick": [
                 "Often tight to bottom. Fish within a few feet of it.",
-                "When you find one, stay on that contour."
+                "When you find one, stay on that contour.",
             ],
         },
         "Chinook salmon": {
@@ -329,50 +342,50 @@ def species_tip_db():
             "Mid": [
                 "Troll flasher plus hoochie or spoon.",
                 "Adjust leader length until action looks right.",
-                "Make long straight passes with gentle S turns."
+                "Make long straight passes with gentle S turns.",
             ],
             "Bottom": ["If hugging bottom, run just above them to avoid snagging."],
             "Quick": [
                 "Speed and depth control are the game.",
-                "Repeat the depth and speed that got your bite."
+                "Repeat the depth and speed that got your bite.",
             ],
         },
         "Smallmouth bass": {
             "temp_f": (60, 75),
             "Top": [
                 "Walking baits, poppers early and late.",
-                "Wind on points can make topwater fire."
+                "Wind on points can make topwater fire.",
             ],
             "Mid": [
                 "Swimbaits, jerkbaits, finesse plastics around rocks and shade.",
-                "Slow down on cold fronts."
+                "Slow down on cold fronts.",
             ],
             "Bottom": [
                 "Ned rig, tube, drop shot on rock and breaks.",
-                "If you feel rock and gravel, you are in the zone."
+                "If you feel rock and gravel, you are in the zone.",
             ],
             "Quick": [
                 "Follow wind. It pushes bait and turns on feeding.",
-                "After a miss, throw a Ned or drop shot back."
+                "After a miss, throw a Ned or drop shot back.",
             ],
         },
         "Largemouth bass": {
             "temp_f": (65, 80),
             "Top": [
                 "Frog, buzz bait, popper around weeds and shade lines.",
-                "Target calm pockets in vegetation."
+                "Target calm pockets in vegetation.",
             ],
             "Mid": [
                 "Swim jig or paddletail along weed edges.",
-                "Flip soft plastics into holes and let it fall."
+                "Flip soft plastics into holes and let it fall.",
             ],
             "Bottom": [
                 "Texas rig and jig in thick cover and along drop offs.",
-                "Slow down when pressured."
+                "Slow down when pressured.",
             ],
             "Quick": [
                 "Shade is a magnet: docks, reeds, mats.",
-                "Dirty water: go louder and bigger."
+                "Dirty water: go louder and bigger.",
             ],
         },
         "Walleye": {
@@ -380,15 +393,15 @@ def species_tip_db():
             "Top": ["Not common topwater, but they can come shallow at night."],
             "Mid": [
                 "Troll crankbaits along breaks at dusk and dawn.",
-                "If suspended, match that depth and keep moving."
+                "If suspended, match that depth and keep moving.",
             ],
             "Bottom": [
                 "Jig and crawler or blade bait near bottom.",
-                "Bottom bouncer with harness on edges."
+                "Bottom bouncer with harness on edges.",
             ],
             "Quick": [
                 "Low light is best: early, late, cloudy.",
-                "Stay on transitions: flats to deep breaks."
+                "Stay on transitions: flats to deep breaks.",
             ],
         },
         "Perch": {
@@ -396,15 +409,15 @@ def species_tip_db():
             "Top": ["Not a true topwater bite. You can catch them shallow though."],
             "Mid": [
                 "Small jigs tipped with bait, slowly swum through schools.",
-                "If you find one, there are usually more."
+                "If you find one, there are usually more.",
             ],
             "Bottom": [
                 "Vertical jig small baits on bottom.",
-                "Use light line and small hooks."
+                "Use light line and small hooks.",
             ],
             "Quick": [
                 "Soft bottom near weeds can be good.",
-                "When you mark a school, hold position and pick them off."
+                "When you mark a school, hold position and pick them off.",
             ],
         },
         "Bluegill": {
@@ -421,7 +434,7 @@ def species_tip_db():
             "Bottom": [
                 "Soak bait on scent trails: cut bait, worms, stink bait.",
                 "Target holes, outside bends, slow water near current.",
-                "Reset to fresh bait if it goes quiet."
+                "Reset to fresh bait if it goes quiet.",
             ],
             "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
         },
@@ -451,7 +464,10 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
-    st.markdown("<div class='small'>Enter water temp to see if this species is in its best range.</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='small'>Enter water temp to see if this species is in its best range.</div>",
+        unsafe_allow_html=True,
+    )
     temp_f = st.number_input("Water temp (F) for this species", value=58.0, step=0.5)
 
     rating = temp_rating(temp_f, lo, hi) if lo is not None else "Unknown"
@@ -475,11 +491,9 @@ def render_species_tips(name, db):
     section("Bottom", info.get("Bottom", ["No tips available."]))
     section("Quick tips", info.get("Quick", ["No tips available."]))
 
-
-# ---------------- Sidebar + state ----------------
-if "selected_day" not in st.session_state:
-    st.session_state["selected_day"] = date.today()
-
+# -------------------------------------------------
+# Sidebar
+# -------------------------------------------------
 with st.sidebar:
     st.markdown("### FishyNW Tools")
     st.caption("Version " + APP_VERSION)
@@ -490,10 +504,10 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
+    selected_day = date.today()
+
     if tool == "Best fishing times":
         st.divider()
-        mode���
-
         mode = st.radio("Location", ["Current location", "Place name"])
 
         if mode == "Current location":
@@ -505,11 +519,11 @@ with st.sidebar:
                 st.session_state["lat"], st.session_state["lon"] = geocode_place(place)
 
         st.divider()
-        st.session_state["selected_day"] = st.date_input("Date", value=st.session_state["selected_day"])
+        selected_day = st.date_input("Date", value=date.today())
 
-selected_day = st.session_state["selected_day"]
-
-# ---------------- Header (logo left, title right) ----------------
+# -------------------------------------------------
+# Header (logo left, title right)
+# -------------------------------------------------
 PAGE_TITLES = {
     "Best fishing times": "Best Fishing Times",
     "Trolling depth calculator": "Trolling Depth Calculator",
@@ -526,7 +540,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------- Main content ----------------
+# -------------------------------------------------
+# Main content
+# -------------------------------------------------
 if tool == "Best fishing times":
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
@@ -666,9 +682,13 @@ else:
 
     render_species_tips(species, db)
 
-# ---------------- Footer ----------------
+# -------------------------------------------------
+# Footer
+# -------------------------------------------------
 st.markdown(
     "<div class='footer'><strong>FishyNW.com</strong><br>"
     "Independent Northwest fishing tools</div>",
     unsafe_allow_html=True,
 )
+```0
+
