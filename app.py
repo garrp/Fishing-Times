@@ -1,19 +1,17 @@
 # app.py
-# FishingNW.com — Best Fishing Times by Location
-# BY Company Edition v2.3 (FishingNW branded)
-# Mobile-first, rounded UI
-# Location ONLY required for fishing times (hidden for calculators)
-# Includes clear footer with FishingNW.com + Blog input box (stored in session)
+# FishingNW.com — Best Fishing Times
+# BY Company Edition v2.4
+# Clean footer, no blog input, improved vertical spacing
 
 import math
 from datetime import datetime, timedelta, date
 import requests
 import streamlit as st
 
-APP_VERSION = "2.3 BY Company Edition"
+APP_VERSION = "2.4 BY Company Edition"
 
 # -------------------------------------------------
-# Page config + mobile-first styling (FishingNW)
+# Page config + spacing-first styling
 # -------------------------------------------------
 st.set_page_config(
     page_title="FishingNW.com | Best Fishing Times",
@@ -25,85 +23,70 @@ st.markdown(
     """
 <style>
 .block-container {
-  padding-top: 0.4rem;
-  padding-bottom: 1.2rem;
-  max-width: 680px;
+  padding-top: 1.2rem;   /* pushed DOWN for readability */
+  padding-bottom: 2rem;
+  max-width: 720px;
 }
 
-/* Sidebar width */
 section[data-testid="stSidebar"] { width: 320px !important; }
 
-/* Typography */
 h1, h2, h3 { letter-spacing: 0.2px; }
-.small-muted { color: rgba(255,255,255,0.65); font-size: 0.95rem; line-height: 1.35; }
+.small-muted { color: rgba(255,255,255,0.65); font-size: 0.95rem; }
 
-/* Brand bar */
 .fnw-brand {
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.035);
   border-radius: 22px;
-  padding: 12px 14px;
-  margin: 8px 0 12px 0;
+  padding: 16px 18px;
+  margin-bottom: 20px;
 }
+
 .fnw-brand-title {
-  font-size: 1.15rem;
-  font-weight: 800;
-  letter-spacing: 0.2px;
+  font-size: 1.25rem;
+  font-weight: 900;
 }
+
 .fnw-brand-sub {
   font-size: 0.95rem;
   opacity: 0.75;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
-/* Cards */
 .fn-card {
   border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.035);
+  background: rgba(255,255,255,0.04);
   border-radius: 22px;
-  padding: 14px 16px;
-  margin: 10px 0;
+  padding: 16px 18px;
+  margin: 14px 0;
 }
+
 .fn-title { font-size: 1rem; opacity: 0.85; }
-.fn-value { font-size: 1.55rem; font-weight: 800; }
+.fn-value { font-size: 1.6rem; font-weight: 800; }
 .fn-sub { font-size: 0.92rem; opacity: 0.7; margin-top: 6px; }
 
-/* Buttons and inputs */
-button, .stButton button { border-radius: 16px !important; padding: 0.65rem 0.9rem !important; }
-div[data-baseweb="input"] > div,
-div[data-baseweb="select"] > div,
-div[data-baseweb="textarea"] > div { border-radius: 16px !important; }
-div[role="radiogroup"] label { border-radius: 16px !important; padding: 8px 10px !important; }
-hr { margin: 0.6rem 0 !important; opacity: 0.25; }
+button, .stButton button {
+  border-radius: 16px !important;
+  padding: 0.7rem 1rem !important;
+}
 
-/* Footer */
+hr { margin: 1rem 0 !important; opacity: 0.3; }
+
 .fnw-footer {
-  margin-top: 22px;
-  border-top: 1px solid rgba(255,255,255,0.14);
-  padding-top: 14px;
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,0.15);
+  text-align: center;
 }
-.fnw-footer-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-}
+
 .fnw-footer-title {
   font-weight: 800;
   font-size: 1.05rem;
 }
+
 .fnw-footer-sub {
-  opacity: 0.7;
   font-size: 0.95rem;
-  margin-top: 2px;
-}
-.fnw-footer-box {
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.03);
-  border-radius: 18px;
-  padding: 12px 14px;
-  margin-top: 10px;
+  opacity: 0.7;
+  margin-top: 4px;
 }
 </style>
 """,
@@ -111,7 +94,7 @@ hr { margin: 0.6rem 0 !important; opacity: 0.25; }
 )
 
 UA_HEADERS = {
-    "User-Agent": "FishingNW-App/2.3",
+    "User-Agent": "FishingNW-App/2.4",
     "Accept": "application/json",
 }
 
@@ -126,8 +109,8 @@ def safe_get_json(url: str, timeout: int = 12):
 
 def ip_geolocate():
     try:
-        data = safe_get_json("https://ipinfo.io/json", timeout=8)
-        loc = data.get("loc")
+        d = safe_get_json("https://ipinfo.io/json", timeout=8)
+        loc = d.get("loc")
         if not loc:
             return None, None
         lat, lon = loc.split(",")
@@ -136,40 +119,39 @@ def ip_geolocate():
         return None, None
 
 
-def geocode_place(place: str):
+def geocode_place(place):
     try:
-        if not place or not place.strip():
-            return None, None
         url = (
             "https://geocoding-api.open-meteo.com/v1/search"
-            f"?name={requests.utils.quote(place.strip())}&count=1&format=json"
+            f"?name={requests.utils.quote(place)}&count=1&format=json"
         )
-        data = safe_get_json(url, timeout=10)
-        r = data.get("results", [])
+        d = safe_get_json(url, timeout=10)
+        r = d.get("results", [])
         if not r:
             return None, None
-        return float(r[0]["latitude"]), float(r[0]["longitude"])
+        return r[0]["latitude"], r[0]["longitude"]
     except Exception:
         return None, None
 
 
-def get_sun_times(lat, lon, day_iso: str):
+def sun_times(lat, lon, day):
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        f"&start_date={day_iso}&end_date={day_iso}"
+        f"&start_date={day}&end_date={day}"
         "&daily=sunrise,sunset&timezone=auto"
     )
     try:
         d = safe_get_json(url)
-        sr = d["daily"]["sunrise"][0]
-        ss = d["daily"]["sunset"][0]
-        return datetime.fromisoformat(sr), datetime.fromisoformat(ss)
+        return (
+            datetime.fromisoformat(d["daily"]["sunrise"][0]),
+            datetime.fromisoformat(d["daily"]["sunset"][0]),
+        )
     except Exception:
         return None, None
 
 
-def get_wind(lat, lon):
+def wind_by_hour(lat, lon):
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
@@ -179,14 +161,13 @@ def get_wind(lat, lon):
         d = safe_get_json(url)
         out = {}
         for t, s in zip(d["hourly"]["time"], d["hourly"]["wind_speed_10m"]):
-            k = datetime.fromisoformat(t).strftime("%H:00")
-            out.setdefault(k, round(float(s), 1))
+            out.setdefault(datetime.fromisoformat(t).strftime("%H:00"), round(s, 1))
         return out
     except Exception:
         return {}
 
 
-def moon_phase(day: date):
+def moon_phase(day):
     y, m, d = day.year, day.month, day.day
     if m < 3:
         y -= 1
@@ -197,11 +178,11 @@ def moon_phase(day: date):
     return ((jd - 2451550.1) % 29.53) / 29.53
 
 
-def best_times(lat, lon, day_obj: date):
-    sr, ss = get_sun_times(lat, lon, day_obj.isoformat())
+def best_times(lat, lon, day):
+    sr, ss = sun_times(lat, lon, day)
     if not sr or not ss:
         return None
-    phase = moon_phase(day_obj)
+    phase = moon_phase(day)
     note = "Normal conditions."
     if phase < 0.08 or phase > 0.92:
         note = "Near New Moon — often strong bite windows."
@@ -221,9 +202,8 @@ def trolling_depth(speed, weight, line_out, line_type):
     depth = 0.135 * (weight / (drag * speed**1.35)) * line_out
     return round(min(depth, 250), 1)
 
-
 # -------------------------------------------------
-# Brand header
+# Brand header (pushed down)
 # -------------------------------------------------
 st.markdown(
     """
@@ -250,25 +230,17 @@ with st.sidebar:
 
     if page == "Best fishing times":
         st.divider()
-        st.markdown("#### Location")
-        mode = st.radio(
-            "Method",
-            ["Current location", "Place name"],
-            label_visibility="collapsed",
-        )
+        mode = st.radio("Location", ["Current location", "Place name"], label_visibility="collapsed")
 
         if mode == "Current location":
             if st.button("Detect location", use_container_width=True):
                 st.session_state["lat"], st.session_state["lon"] = ip_geolocate()
-            if st.session_state.get("lat") is None or st.session_state.get("lon") is None:
-                st.caption("If this fails, switch to Place name.")
         else:
             place = st.text_input("Place", placeholder="Example: Fernan Lake", label_visibility="collapsed")
             if st.button("Use place", use_container_width=True):
                 st.session_state["lat"], st.session_state["lon"] = geocode_place(place)
 
         st.divider()
-        st.markdown("#### Date")
         selected_day = st.date_input("Date", value=date.today(), label_visibility="collapsed")
 
 # -------------------------------------------------
@@ -281,22 +253,10 @@ if page == "Best fishing times":
     if lat is None or lon is None:
         st.info("Set your location in the side menu to generate fishing times.")
     else:
-        t = best_times(lat, lon, st.session_state.get("selected_day", date.today()))
-        # If sidebar date exists, prefer it
-        if "selected_day" not in st.session_state:
-            # make sure key exists even if sidebar not interacted
-            st.session_state["selected_day"] = date.today()
-        # Use sidebar-selected date if it was created in this run
-        try:
-            # selected_day exists only if page==Best fishing times and sidebar ran it
-            t = best_times(lat, lon, selected_day)
-        except Exception:
-            t = best_times(lat, lon, st.session_state["selected_day"])
-
+        t = best_times(lat, lon, selected_day)
         if not t:
             st.warning("Could not generate fishing times.")
         else:
-            st.markdown("### Best fishing times")
             m0, m1 = t["morning"]
             e0, e1 = t["evening"]
 
@@ -316,28 +276,24 @@ if page == "Best fishing times":
             )
 
             st.markdown("### Wind (mph)")
-            wind = get_wind(lat, lon)
+            wind = wind_by_hour(lat, lon)
             for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
-                v = wind.get(h, "—")
                 st.markdown(
                     f"""
 <div class="fn-card">
   <div class="fn-title">{h}</div>
-  <div class="fn-value">{v} mph</div>
+  <div class="fn-value">{wind.get(h, "—")} mph</div>
 </div>
 """,
                     unsafe_allow_html=True,
                 )
 
 # -------------------------------------------------
-# Trolling Depth Calculator (NO LOCATION)
+# Calculator (no location)
 # -------------------------------------------------
 else:
     st.markdown("### Trolling depth calculator")
-    st.markdown(
-        '<div class="small-muted">Flatline trolling estimate. Location not required.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="small-muted">Location not required.</div>', unsafe_allow_html=True)
 
     speed = st.number_input("Trolling speed (mph)", 0.0, value=1.5, step=0.1)
     weight = st.number_input("Weight (oz)", 0.0, value=8.0, step=0.5)
@@ -350,7 +306,7 @@ else:
         f"""
 <div class="fn-card">
   <div class="fn-title">Estimated depth</div>
-  <div class="fn-value">{depth if depth is not None else "—"} ft</div>
+  <div class="fn-value">{depth if depth else "—"} ft</div>
   <div class="fn-sub">Rule of thumb estimate. Current and lure drag affect depth.</div>
 </div>
 """,
@@ -358,35 +314,13 @@ else:
     )
 
 # -------------------------------------------------
-# Clear footer with FishingNW.com + Blog input
+# Footer (clear, readable, brand-only)
 # -------------------------------------------------
 st.markdown(
     """
 <div class="fnw-footer">
-  <div class="fnw-footer-row">
-    <div>
-      <div class="fnw-footer-title">FishingNW.com</div>
-      <div class="fnw-footer-sub">Copy and save notes for your blog post</div>
-    </div>
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-blog_note = st.text_area(
-    "FishingNW.com blog input",
-    placeholder="Paste your blog notes here. Example: Lake, conditions, lures, results, and a short recap.",
-    height=140,
-)
-
-st.session_state["blog_input"] = blog_note
-
-st.markdown(
-    """
-<div class="fnw-footer-box">
-  <div class="fn-title">Saved</div>
-  <div class="fn-sub">Your blog input stays on-screen while the app is running. Copy it anytime.</div>
+  <div class="fnw-footer-title">FishingNW.com</div>
+  <div class="fnw-footer-sub">Independent fishing tools for the Pacific Northwest</div>
 </div>
 """,
     unsafe_allow_html=True,
