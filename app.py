@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.7.3
+# Version 1.7.4
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7.3"
+APP_VERSION = "1.7.4"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7.3",
+    "User-Agent": "FishyNW-App-1.7.4",
     "Accept": "application/json",
 }
 
@@ -26,7 +26,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Branding colors (light green button + cream text)
+# Branding colors (light green primary button + cream text)
 # -------------------------------------------------
 CREAM_TEXT = "#f6f2e7"
 SIDEBAR_BG = "#071b1f"
@@ -177,20 +177,6 @@ def get_location():
             return None, None
         lat, lon = loc.split(",")
         return float(lat), float(lon)
-    except Exception:
-        return None, None
-
-def geocode_place(name):
-    try:
-        url = (
-            "https://geocoding-api.open-meteo.com/v1/search"
-            "?name=" + name + "&count=1&format=json"
-        )
-        data = get_json(url)
-        res = data.get("results")
-        if not res:
-            return None, None
-        return res[0]["latitude"], res[0]["longitude"]
     except Exception:
         return None, None
 
@@ -387,15 +373,15 @@ def species_tip_db():
             "Top": ["Not common topwater, but they can come shallow at night."],
             "Mid": [
                 "Troll crankbaits along breaks at dusk and dawn.",
-                "If suspended, match that depth and keep moving."
+                "If suspended, match that depth and keep moving.",
             ],
             "Bottom": [
                 "Jig and crawler or blade bait near bottom.",
-                "Bottom bouncer with harness on edges."
+                "Bottom bouncer with harness on edges.",
             ],
             "Quick": [
                 "Low light is best: early, late, cloudy.",
-                "Stay on transitions: flats to deep breaks."
+                "Stay on transitions: flats to deep breaks.",
             ],
         },
         "Perch": {
@@ -403,15 +389,15 @@ def species_tip_db():
             "Top": ["Not a true topwater bite. You can catch them shallow though."],
             "Mid": [
                 "Small jigs tipped with bait, slowly swum through schools.",
-                "If you find one, there are usually more."
+                "If you find one, there are usually more.",
             ],
             "Bottom": [
                 "Vertical jig small baits on bottom.",
-                "Use light line and small hooks."
+                "Use light line and small hooks.",
             ],
             "Quick": [
                 "Soft bottom near weeds can be good.",
-                "When you mark a school, hold position and pick them off."
+                "When you mark a school, hold position and pick them off.",
             ],
         },
         "Bluegill": {
@@ -428,7 +414,7 @@ def species_tip_db():
             "Bottom": [
                 "Soak bait on scent trails: cut bait, worms, stink bait.",
                 "Target holes, outside bends, slow water near current.",
-                "Reset to fresh bait if it goes quiet."
+                "Reset to fresh bait if it goes quiet.",
             ],
             "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
         },
@@ -564,35 +550,38 @@ PAGE_TITLES = {
 
 # -------------------------------------------------
 # Sidebar navigation (buttons)
+# - The top button "Best fishing times" now also grabs current location.
+# - Removed the separate "Display Best Fishing Times" button.
 # -------------------------------------------------
 with st.sidebar:
     st.markdown("### FishyNW Tools")
     st.caption("Version " + APP_VERSION)
 
-    def nav_button(label, target):
-        if st.button(label, use_container_width=True, key="nav_" + target):
-            st.session_state["tool"] = target
+    # Top button: sets tool AND gets location
+    if st.button(
+        "Best fishing times",
+        use_container_width=True,
+        type="primary",
+        key="nav_best_times",
+    ):
+        st.session_state["tool"] = "Best fishing times"
+        st.session_state["lat"], st.session_state["lon"] = get_location()
 
-    nav_button("Best fishing times", "Best fishing times")
-    nav_button("Trolling depth calculator", "Trolling depth calculator")
-    nav_button("Water temperature targeting", "Water temperature targeting")
-    nav_button("Species tips", "Species tips")
-    nav_button("Speedometer", "Speedometer")
+    if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
+        st.session_state["tool"] = "Trolling depth calculator"
+
+    if st.button("Water temperature targeting", use_container_width=True, key="nav_temp"):
+        st.session_state["tool"] = "Water temperature targeting"
+
+    if st.button("Species tips", use_container_width=True, key="nav_species"):
+        st.session_state["tool"] = "Species tips"
+
+    if st.button("Speedometer", use_container_width=True, key="nav_speed"):
+        st.session_state["tool"] = "Speedometer"
 
     tool = st.session_state["tool"]
 
     if tool == "Best fishing times":
-        st.divider()
-
-        # ONLY ONE button for location now (per your request)
-        if st.button(
-            "Display Best Fishing Times",
-            use_container_width=True,
-            type="primary",
-            key="btn_display_best_times",
-        ):
-            st.session_state["lat"], st.session_state["lon"] = get_location()
-
         st.divider()
         selected_day = st.date_input("Date", value=date.today(), key="day_input")
 
@@ -617,9 +606,10 @@ st.markdown(
 if tool == "Best fishing times":
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
+    selected_day = st.session_state.get("day_input", date.today())
 
     if lat is None or lon is None:
-        st.info("Tap 'Display Best Fishing Times' in the menu.")
+        st.info("Tap 'Best fishing times' in the menu to use your current location.")
     else:
         times = best_times(lat, lon, selected_day)
         if not times:
