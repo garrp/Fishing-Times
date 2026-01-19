@@ -1,201 +1,354 @@
-# app.py — FishyNW Version 1.0 (simple + stable)
-# One page only: Date + City/State + static bite index graph + wind every 4 hours + FishyNW footer/link
-
-import math
-from datetime import datetime, timedelta
-from pathlib import Path
-
-import pytz
+import io
 import requests
 import streamlit as st
 import matplotlib.pyplot as plt
+from datetime import datetime, date, timedelta
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-from astral import LocationInfo
-from astral.sun import sun
+APP_VERSION = "1.0"
+APP_TITLE = f"FishyNW Fishing Times v{APP_VERSION}"
+LOGO_FILENAME = "FishyNW-logo.png"
 
 
-# =========================
-# App config
-# =========================
-st.set_page_config(page_title="FishyNW Fishing Times", layout="wide")
-TZ = pytz.timezone("America/Los_Angeles")
+# -----------------------------
+# Network session with retries
+# -----------------------------
+def make_session():
+    s = requests.Session()
+    retry = Retry(
+        total=4,
+        connect=4,
+        read=4,
+        backoff_factor=0.6,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    return s
 
-# =========================
-# Styling
-# =========================
-st.markdown(
-    """
-<style>
-.block-container { max-width: 1000px; padding-top: 1.2rem; }
-.card {
-  background: rgba(17,26,46,.55);
-  border-radius: 18px;
-  padding: 16px;
-  border: 1px solid rgba(255,255,255,.10);
-  margin-bottom: 14px;
-}
-.footer {
-  margin-top: 26px;
-  text-align:center;
-  font-size:12px;
-  color:#9fb2d9;
-}
-.footer a { color:#6fd3ff; text-decoration:none; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
 
-# =========================
-# Helpers
-# =========================
-def clamp(x, a, b):
-    return max(a, min(b, x))
+SESSION = make_session()
 
-def gaussian(x, mu, sigma):
-    return math.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
-def show_logo():
-    for p in ["FishyNW-logo.png", "assets/FishyNW-logo.png", "images/FishyNW-logo.png"]:
-        if Path(p).exists():
-            st.image(p, width=220)
-            return
-    st.markdown("**FishyNW**")
+def safe_read_logo(path: str):
+    try:
+        return open(path, "rb").read()
+    except Exception:
+        return None
 
-def deg_to_compass(deg):
-    dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
-            "S","SSW","SW","WSW","W","WNW","NW","NNW"]
-    return dirs[int((deg / 22.5) + 0.5) % 16]
 
-def minutes_since_midnight(dt, tz):
-    local = dt.astimezone(tz)
-    return local.hour * 60 + local.minute
+# -----------------------------
+# Cached API calls (safe)
+# -----------------------------
+@st.cache_data(ttl=86400)
+def geocode_city(city: str):
+    if not city or not city.strip():
+        return None, None, None
 
-# =========================
-# Geocoding
-# =========================
-def geocode_city_state(city, state):
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    r = requests.get(url, params={"name": city, "count": 20}, timeout=10)
-    r.raise_for_status()
+    params = {"name": city.strip(), "count": 1, "language": "en", "format": "json"}
 
-    results = r.json().get("results", [])
-    if not results:
-        raise ValueError("City not found")
+    try:
+        r = SESSION.get(url, params=params, timeout=(8, 25))
+        if r.status_code != 200:
+            return None, None, None
 
-    state_u = state.upper()
-    for item in results:
-        if (item.get("country_code") == "US") and (state_u in (item.get("admin1", "")).upper()):
-            return float(item["latitude"]), float(item["longitude"]), f"{item['name']}, {item['admin1']}"
+        data = r.json()
+        results = data.get("results") or []
+        if not results:
+            return None, None, None
 
-    item = results[0]
-    admin1 = item.get("admin1", "")
-    return float(item["latitude"]), float(item["longitude"]), f"{item.get('name','Location')}, {admin1}".strip(", ")
+        top = results[0]
+        label = ", ".join(
+            [x for x in [top.get("name"), top.get("admin1"), top.get("country")] if x]
+        )
+        return label, float(top["latitude"]), float(top["longitude"])
+    except Exception:
+        return None, None, None
 
-# =========================
-# Sun events (Astral only)
-# =========================
-def get_sun_events(day, lat, lon, tz):
-    loc = LocationInfo("", "", tz.zone, lat, lon)
-    s = sun(loc.observer, date=day, tzinfo=tz)
-    return {"sunrise": s["sunrise"], "sunset": s["sunset"]}
 
-# =========================
-# Bite curve (simple v1.0)
-# Peaks: sunrise + sunset only
-# =========================
-def build_bite_curve(day, tz, sunrise_dt, sunset_dt):
-    centers = [
-        minutes_since_midnight(sunrise_dt, tz),
-        minutes_since_midnight(sunset_dt, tz),
+@st.cache_data(ttl=1800)
+def fetch_weather(lat: float, lon: float, day: date):
+    start = day.isoformat()
+    end = (day + timedelta(days=1)).isoformat()
+
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "wind_speed_10m,wind_direction_10m",
+        "daily": "sunrise,sunset",
+        "timezone": "auto",
+        "start_date": start,
+        "end_date": end,
+        "wind_speed_unit": "mph",
+    }
+
+    try:
+        r = SESSION.get(url, params=params, timeout=(8, 25))
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def parse_iso_dt(s: str):
+    return datetime.fromisoformat(s)
+
+
+def wind_dir_to_text(deg: float):
+    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    ix = int((deg + 22.5) // 45) % 8
+    return dirs[ix]
+
+
+def clamp_dt_to_day(dt_obj: datetime, target_day: date):
+    return datetime(
+        year=target_day.year,
+        month=target_day.month,
+        day=target_day.day,
+        hour=dt_obj.hour,
+        minute=dt_obj.minute,
+        second=0,
+    )
+
+
+def compute_fishing_windows(sunrise: datetime, sunset: datetime, target_day: date, species: str):
+    dawn_start = sunrise - timedelta(hours=1)
+    dawn_end = sunrise + timedelta(hours=1, minutes=30)
+
+    midday_start = sunrise.replace(hour=11, minute=0)
+    midday_end = sunrise.replace(hour=13, minute=0)
+
+    dusk_start = sunset - timedelta(hours=1, minutes=30)
+    dusk_end = sunset + timedelta(minutes=45)
+
+    windows = [
+        ("Early", dawn_start, dawn_end, 0.75),
+        ("Midday", midday_start, midday_end, 0.55),
+        ("Evening", dusk_start, dusk_end, 0.80),
     ]
 
-    x, y = [], []
-    for m in range(1440):
-        val = 25.0
-        for c in centers:
-            d = min(abs(m - c), 1440 - abs(m - c))
-            val += 65.0 * gaussian(d, 0.0, 90.0)
-        x.append(m / 60.0)
-        y.append(clamp(val, 0, 100))
-    return x, y
+    s = (species or "").strip().lower()
 
-# =========================
-# Wind (every 4 hours)
-# =========================
-def fetch_wind_4h(day, lat, lon, tz_name):
-    r = requests.get(
-        "https://api.open-meteo.com/v1/forecast",
-        params={
-            "latitude": lat,
-            "longitude": lon,
-            "hourly": "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
-            "start_date": day.isoformat(),
-            "end_date": day.isoformat(),
-            "wind_speed_unit": "mph",
-            "timezone": tz_name,
-        },
-        timeout=10,
-    )
-    r.raise_for_status()
+    if s in ["kokanee", "rainbow trout", "chinook", "lake trout", "trout"]:
+        windows = [
+            ("Early (best)", dawn_start, dawn_end, 0.90),
+            ("Midday", midday_start, midday_end, 0.45),
+            ("Evening (best)", dusk_start, dusk_end, 0.90),
+        ]
+    elif s in ["walleye"]:
+        windows = [
+            ("Early", dawn_start, dawn_end, 0.70),
+            ("Midday", midday_start, midday_end, 0.35),
+            ("Evening (best)", dusk_start, dusk_end, 0.90),
+        ]
+    elif s in ["smallmouth bass", "largemouth bass", "bass"]:
+        windows = [
+            ("Early (best)", dawn_start, dawn_end, 0.85),
+            ("Midday", midday_start, midday_end, 0.60),
+            ("Evening (best)", dusk_start, dusk_end, 0.85),
+        ]
+    elif s in ["catfish", "channel catfish", "bullhead"]:
+        windows = [
+            ("Early", dawn_start, dawn_end, 0.45),
+            ("Midday", midday_start, midday_end, 0.50),
+            ("Evening (best)", dusk_start, dusk_end, 0.90),
+        ]
 
-    hourly = r.json().get("hourly", {}) or {}
-    times = hourly.get("time", []) or []
-    ws = hourly.get("wind_speed_10m", []) or []
-    wd = hourly.get("wind_direction_10m", []) or []
-    wg = hourly.get("wind_gusts_10m", []) or []
+    fixed = []
+    for label, start_dt, end_dt, weight in windows:
+        if start_dt.date() != target_day:
+            start_dt = clamp_dt_to_day(start_dt, target_day)
+        if end_dt.date() != target_day:
+            end_dt = clamp_dt_to_day(end_dt, target_day)
+        fixed.append((label, start_dt, end_dt, weight))
+    return fixed
 
-    bullets = []
-    for t, s, d, g in zip(times, ws, wd, wg):
-        hour = int(t.split("T")[1][:2])
-        if hour % 4 != 0:
-            continue
-        label = f"{hour % 12 or 12} {'AM' if hour < 12 else 'PM'}"
-        bullets.append(f"**{label}**: {int(round(s))} mph {deg_to_compass(float(d))}, gust {int(round(g))} mph")
-    return bullets
 
-# =========================
+def wind_every_n_hours(times, speeds, dirs, target_day: date, step_hours: int):
+    step = max(1, int(step_hours))
+    out = []
+    for i in range(0, len(times), step):
+        t = parse_iso_dt(times[i])
+        if t.date() == target_day:
+            out.append((t, float(speeds[i]), wind_dir_to_text(float(dirs[i]))))
+    return out
+
+
+def make_fishing_graph(target_day: date, windows):
+    start = datetime(target_day.year, target_day.month, target_day.day, 0, 0, 0)
+    end = start + timedelta(days=1)
+
+    fig = plt.figure(figsize=(10, 2.6), dpi=160)
+    ax = fig.add_subplot(111)
+
+    ax.plot([start, end], [0, 0])
+
+    for _, s_dt, e_dt, weight in windows:
+        ax.axvspan(s_dt, e_dt, alpha=max(0.08, min(0.35, weight * 0.35)))
+
+    ax.set_ylim(-1, 1)
+    ax.set_yticks([])
+    ax.set_title("Best Fishing Times (shaded)")
+    ax.set_xlabel("Time")
+
+    fig.autofmt_xdate()
+
+    buf = io.BytesIO()
+    fig.tight_layout()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def species_note(species: str):
+    s = (species or "").strip().lower()
+    if s in ["kokanee", "rainbow trout", "chinook", "lake trout", "trout"]:
+        return "Trolling usually lines up best with dawn and dusk. Keep passes clean when wind shifts."
+    if s in ["walleye"]:
+        return "Low light is your friend. Focus the evening window and nearby low-light periods."
+    if s in ["smallmouth bass", "largemouth bass", "bass"]:
+        return "Early and late are strongest. Wind can help by pushing bait onto banks and points."
+    if s in ["catfish", "channel catfish", "bullhead"]:
+        return "Evening is typically strongest. Wind matters less than bait placement and scent trail."
+    return "Use the shaded windows as a starting point. Adjust based on wind, structure, and marks."
+
+
+# -----------------------------
 # UI
-# =========================
-st.markdown("<div class='card'>", unsafe_allow_html=True)
-show_logo()
-st.markdown("## Best Fishing Times")
-st.markdown("</div>", unsafe_allow_html=True)
+# -----------------------------
+st.set_page_config(page_title=APP_TITLE, layout="centered")
 
-day = st.date_input("Date", value=datetime.now(TZ).date())
-city = st.text_input("City", "Coeur d'Alene")
-state = st.text_input("State", "ID")
+logo = safe_read_logo(LOGO_FILENAME)
+if logo:
+    st.image(logo, use_container_width=True)
 
-if st.button("Generate"):
-    try:
-        lat, lon, place = geocode_city_state(city, state)
-        events = get_sun_events(day, lat, lon, TZ)
+st.title(APP_TITLE)
+st.caption("One day only • Best fishing times graph • Wind listed every 2 hours")
 
-        x, y = build_bite_curve(day, TZ, events["sunrise"], events["sunset"])
+# Sidebar inputs
+with st.sidebar:
+    st.subheader("Inputs")
 
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(x, y, linewidth=2)
-        ax.set_xlim(0, 24)
-        ax.set_ylim(0, 100)
-        ax.set_xticks(range(0, 25, 4))
-        ax.set_xlabel("Time of Day")
-        ax.set_ylabel("Bite Index")
-        ax.set_title(f"Bite Index • {place}")
-        ax.grid(alpha=0.3)
-        st.pyplot(fig, clear_figure=True)
+    city = st.text_input("City / place name", "Coeur d'Alene, ID")
+    manual = st.checkbox("Use manual lat/lon")
+    target_date = st.date_input("Day", date.today())
 
-        st.markdown("### Wind (every 4 hours)")
-        for w in fetch_wind_4h(day, lat, lon, TZ.zone):
-            st.markdown(f"- {w}")
+    species = st.selectbox(
+        "Species",
+        [
+            "Kokanee",
+            "Rainbow trout",
+            "Walleye",
+            "Smallmouth bass",
+            "Largemouth bass",
+            "Chinook",
+            "Lake trout",
+            "Catfish",
+            "Other",
+        ],
+        index=0,
+    )
 
-    except Exception as e:
-        st.error(str(e))
+    lat = lon = None
+    if manual:
+        lat = st.number_input("Latitude", value=47.6777, format="%.6f")
+        lon = st.number_input("Longitude", value=-116.7805, format="%.6f")
 
-st.markdown(
-    """
-<div class="footer">
-  <b>FishyNW</b> • <a href="https://fishynw.com" target="_blank" rel="noopener">fishynw.com</a>
-</div>
-""",
-    unsafe_allow_html=True,
-)
+    submitted = st.button("Get fishing outlook", use_container_width=True)
+
+if not submitted:
+    st.stop()
+
+# Resolve location
+if manual:
+    place_label = "Custom location"
+    lat, lon = float(lat), float(lon)
+else:
+    place_label, lat, lon = geocode_city(city)
+    if lat is None or lon is None:
+        st.warning("City lookup failed or timed out. Try again or switch to manual lat/lon.")
+        st.stop()
+
+st.markdown("### Location")
+st.write(f"{place_label} (lat {lat:.4f}, lon {lon:.4f})")
+
+# Fetch weather (with graceful fallback)
+wx = fetch_weather(lat, lon, target_date)
+using_fallback = False
+
+if wx is None:
+    using_fallback = True
+    st.info(
+        "Live weather temporarily unavailable or rate-limited. "
+        "Showing estimated fishing windows and calm-wind fallback."
+    )
+
+if using_fallback:
+    times = [
+        datetime(target_date.year, target_date.month, target_date.day, h, 0).isoformat()
+        for h in range(0, 24)
+    ]
+    speeds = [3.0] * 24
+    dirs = [180.0] * 24
+
+    sunrise = datetime(target_date.year, target_date.month, target_date.day, 6, 30)
+    sunset = datetime(target_date.year, target_date.month, target_date.day, 17, 0)
+else:
+    hourly = wx.get("hourly") or {}
+    daily = wx.get("daily") or {}
+
+    times = hourly.get("time") or []
+    speeds = hourly.get("wind_speed_10m") or []
+    dirs = hourly.get("wind_direction_10m") or []
+
+    sunrise_list = daily.get("sunrise") or []
+    sunset_list = daily.get("sunset") or []
+
+    sunrise = parse_iso_dt(sunrise_list[0]) if sunrise_list else None
+    sunset = parse_iso_dt(sunset_list[0]) if sunset_list else None
+
+if not times or not speeds or not dirs:
+    st.warning("No wind data available for this location/date.")
+    st.stop()
+
+# Best fishing windows
+st.markdown("### Best Fishing Times (graph)")
+if sunrise and sunset:
+    windows = compute_fishing_windows(sunrise, sunset, target_date, species)
+else:
+    start = datetime(target_date.year, target_date.month, target_date.day, 6, 0, 0)
+    mid = datetime(target_date.year, target_date.month, target_date.day, 12, 0, 0)
+    eve = datetime(target_date.year, target_date.month, target_date.day, 18, 0, 0)
+    windows = [
+        ("Early", start, start + timedelta(hours=2), 0.75),
+        ("Midday", mid - timedelta(hours=1), mid + timedelta(hours=1), 0.55),
+        ("Evening", eve - timedelta(hours=1), eve + timedelta(hours=2), 0.80),
+    ]
+
+st.image(make_fishing_graph(target_date, windows), use_container_width=True)
+
+st.markdown("### Best Windows (list)")
+for label, s_dt, e_dt, _ in windows:
+    st.write(f"• {label}: {s_dt.strftime('%-I:%M %p')} - {e_dt.strftime('%-I:%M %p')}")
+
+st.markdown("### Species Note")
+st.write(f"• {species_note(species)}")
+
+st.markdown("### Wind (every 2 hours)")
+wind2 = wind_every_n_hours(times, speeds, dirs, target_date, step_hours=2)
+
+for t, mph, dtxt in wind2:
+    st.write(f"• {t.strftime('%-I:%M %p')}: {mph:.0f} mph ({dtxt})")
+
+st.caption(f"FishyNW • v{APP_VERSION} • one-day • best times graph • wind every 2 hours")
