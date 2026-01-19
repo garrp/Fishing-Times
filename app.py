@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.7.5
+# Version 1.7.6
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7.5"
+APP_VERSION = "1.7.6"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7.5",
+    "User-Agent": "FishyNW-App-1.7.6",
     "Accept": "application/json",
 }
 
@@ -134,6 +134,19 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   font-weight: 900;
   font-size: 0.92rem;
   color: """ + CREAM_TEXT + """;
+}
+
+/* Date range row */
+.range-row {
+  display:flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+.range-note {
+  margin-top: 6px;
+  opacity: 0.82;
+  color: """ + CREAM_TEXT + """;
+  font-size: 0.95rem;
 }
 
 /* Footer */
@@ -539,7 +552,9 @@ PAGE_TITLES = {
 }
 
 # -------------------------------------------------
-# Sidebar navigation (all buttons light green)
+# Sidebar navigation (buttons)
+# - Best fishing times button sets tool AND gets current location
+# - Date selection moved to main page and supports multiple days (start/end)
 # -------------------------------------------------
 with st.sidebar:
     st.markdown("### FishyNW Tools")
@@ -561,16 +576,11 @@ with st.sidebar:
     if st.button("Speedometer", use_container_width=True, key="nav_speed"):
         st.session_state["tool"] = "Speedometer"
 
-    tool = st.session_state["tool"]
-
-    if tool == "Best fishing times":
-        st.divider()
-        selected_day = st.date_input("Date", value=date.today(), key="day_input")
+tool = st.session_state["tool"]
 
 # -------------------------------------------------
 # Header row (logo left, title right)
 # -------------------------------------------------
-tool = st.session_state["tool"]
 page_title = PAGE_TITLES.get(tool, "FishyNW Tools")
 
 st.markdown(
@@ -588,15 +598,41 @@ st.markdown(
 if tool == "Best fishing times":
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
-    selected_day = st.session_state.get("day_input", date.today())
 
-    if lat is None or lon is None:
+    st.markdown("### Date range")
+    c1, c2 = st.columns(2)
+    with c1:
+        start_day = st.date_input("Start date", value=date.today(), key="range_start")
+    with c2:
+        end_day = st.date_input("End date", value=date.today(), key="range_end")
+
+    st.markdown("<div class='range-note'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
+
+    if end_day < start_day:
+        st.warning("End date must be the same as or after start date.")
+    elif lat is None or lon is None:
         st.info("Tap 'Best fishing times' in the menu to use your current location.")
     else:
-        times = best_times(lat, lon, selected_day)
-        if not times:
-            st.warning("Unable to calculate fishing times.")
-        else:
+        # Build day list (limit to 14 days to keep UI fast and clean)
+        day_list = []
+        cur = start_day
+        while cur <= end_day:
+            day_list.append(cur)
+            if len(day_list) >= 14:
+                break
+            cur = cur + timedelta(days=1)
+
+        if len(day_list) == 14 and end_day > day_list[-1]:
+            st.info("Showing first 14 days only. Shorten the range to see more detail.")
+
+        for d in day_list:
+            st.markdown("## " + d.strftime("%A") + " - " + d.strftime("%b %d, %Y"))
+
+            times = best_times(lat, lon, d)
+            if not times:
+                st.warning("Unable to calculate fishing times for this day.")
+                continue
+
             m0, m1 = times["morning"]
             e0, e1 = times["evening"]
 
