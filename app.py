@@ -225,6 +225,51 @@ section[data-testid="stSidebar"] { width: 320px; }
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
+# -------------------------------------------------
+# GA4 (server-side) analytics - Streamlit Community Cloud safe
+# Uses GA4 Measurement Protocol
+# -------------------------------------------------
+def ga_get_client_id():
+    if "ga_client_id" not in st.session_state:
+        st.session_state["ga_client_id"] = str(uuid.uuid4())
+    return st.session_state["ga_client_id"]
+
+def ga_send_event(event_name, params=None, debug=False):
+    # params: dict of event params (simple types only)
+    try:
+        enabled = bool(st.secrets.get("GA_ENABLED", True))
+        if not enabled:
+            return
+
+        mid = st.secrets.get("GA_MEASUREMENT_ID", "").strip()
+        secret = st.secrets.get("GA_API_SECRET", "").strip()
+        if not mid or not secret:
+            # Secrets not set
+            return
+
+        if params is None:
+            params = {}
+
+        payload = {
+            "client_id": ga_get_client_id(),
+            "events": [
+                {
+                    "name": str(event_name),
+                    "params": params,
+                }
+            ],
+        }
+
+        base = "https://www.google-analytics.com"
+        path = "/debug/mp/collect" if debug else "/mp/collect"
+        url = base + path + "?measurement_id=" + mid + "&api_secret=" + secret
+
+        # Keep timeout short so analytics never slows your app
+        requests.post(url, json=payload, timeout=3)
+
+    except Exception:
+        # Never break the app for analytics
+        return
 def get_json(url, timeout=10):
     r = requests.get(url, headers=HEADERS, timeout=timeout)
     r.raise_for_status()
