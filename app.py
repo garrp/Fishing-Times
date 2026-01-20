@@ -207,6 +207,44 @@ def ga_send_event(event_name, params=None, debug=False):
         if not enabled:
             return
 
+# -------------------------------------------------
+# Analytics consent banner
+# -------------------------------------------------
+def analytics_consent_required():
+    return "analytics_consent" not in st.session_state
+
+def analytics_allowed():
+    return st.session_state.get("analytics_consent") == "accepted"
+
+def render_analytics_consent_banner():
+    st.markdown(
+        """
+<div style="
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: rgba(0,0,0,0.03);
+">
+  <strong>Analytics notice</strong><br>
+  This app uses anonymous usage analytics to understand which tools are used
+  and improve performance. No personal information is collected.
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Accept analytics", use_container_width=True):
+            st.session_state["analytics_consent"] = "accepted"
+            st.rerun()
+    with c2:
+        if st.button("Decline analytics", use_container_width=True):
+            st.session_state["analytics_consent"] = "declined"
+            st.rerun()
+
+        
         mid = str(st.secrets.get("GA_MEASUREMENT_ID", "")).strip()
         secret = str(st.secrets.get("GA_API_SECRET", "")).strip()
         if not mid or not secret:
