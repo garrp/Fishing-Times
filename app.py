@@ -59,7 +59,6 @@ section[data-testid="stSidebar"] { width: 320px; }
   line-height: 1.25rem;
 }
 
-/* Cards */
 .card {
   border-radius: 18px;
   padding: 16px;
@@ -100,6 +99,10 @@ section[data-testid="stSidebar"] { width: 320px; }
   font-size: 0.95rem;
   opacity: 0.90;
 }
+
+/* Home spacing */
+.home-wrap { margin-top: 10px; }
+.home-sub { margin-top: 6px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -525,13 +528,20 @@ with st.sidebar:
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
-# Home page should be blank until Best fishing times is pressed
+# Home page: show logo only, no other content
 # -------------------------------------------------
 if tool == "Home":
+    st.markdown(
+        "<div class='home-wrap'>"
+        "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
+        "<div class='small home-sub'>Use the menu to open Best fishing times.</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 # -------------------------------------------------
-# Header row
+# Header row (all other pages)
 # -------------------------------------------------
 page_title = PAGE_TITLES.get(tool, "")
 
