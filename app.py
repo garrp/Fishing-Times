@@ -703,7 +703,7 @@ elif tool == "Trolling depth calculator":
     with col1:
         line_type = st.radio("Line type", ["Braid", "Fluorocarbon", "Monofilament"])
     with col2:
-        line_test = st.selectbox("Line test (lb)", [6, 8, 10, 12, 15, 20, 25, 30, 40, 50], index=6)
+        line_test = st.selectbox("Line test (lb)", [6, 8, 10, 12, 15, 20, 25, 30, 40, 50], index=3)
 
     depth = trolling_depth(speed, weight, line_out, line_type, line_test)
 
