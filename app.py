@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.7.7
+# Version 1.7.8
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7.7"
+APP_VERSION = "1.7.8"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7.7",
+    "User-Agent": "FishyNW-App-1.7.8",
     "Accept": "application/json",
 }
 
@@ -27,8 +27,6 @@ st.set_page_config(
 
 # -------------------------------------------------
 # Sidebar auto-hide (best effort)
-# Streamlit does not officially expose sidebar control.
-# This clicks the collapse button after a nav click.
 # -------------------------------------------------
 if "collapse_sidebar" not in st.session_state:
     st.session_state["collapse_sidebar"] = False
@@ -55,13 +53,12 @@ def run_sidebar_collapse_if_needed():
       if (btn) { btn.click(); }
     } catch (e) {}
   }
-  setTimeout(clickCollapse, 60);
+  setTimeout(clickCollapse, 80);
 })();
 </script>
 """,
         height=0,
     )
-
     st.session_state["collapse_sidebar"] = False
 
 # -------------------------------------------------
@@ -132,23 +129,6 @@ section[data-testid="stSidebar"] { width: 320px; }
 .card-value { font-size: 1.6rem; font-weight: 800; }
 .compact-card { margin-top: 8px !important; padding: 14px 16px !important; }
 
-/* Lists */
-.tip-h { font-weight: 800; margin-top: 10px; }
-.bul { margin-top: 8px; }
-.bul li { margin-bottom: 6px; }
-
-/* Badge */
-.badge {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 999px;
-  margin: 6px 6px 0 0;
-  font-weight: 800;
-  font-size: 0.92rem;
-  border: 1px solid rgba(0,0,0,0.14);
-  background: rgba(0,0,0,0.03);
-}
-
 /* Footer */
 .footer {
   margin-top: 34px;
@@ -164,16 +144,10 @@ section[data-testid="stSidebar"] { width: 320px; }
 .home-center .header-logo { max-width: 100%; margin: 0 auto; }
 .home-center .header-logo img { max-width: 92vw; }
 
-/* Species blocks */
-.spec-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  margin-top: 10px;
-}
-@media (min-width: 720px) {
-  .spec-grid { grid-template-columns: 1fr 1fr; }
-}
+/* Lists */
+.tip-h { font-weight: 800; margin-top: 10px; }
+.bul { margin-top: 8px; }
+.bul li { margin-bottom: 6px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -215,7 +189,18 @@ def get_sun_times(lat, lon, day_iso):
     except Exception:
         return None, None
 
-def get_wind(lat, lon):
+def best_times(lat, lon, day_obj):
+    day_iso = day_obj.isoformat()
+    sr, ss = get_sun_times(lat, lon, day_iso)
+    if not sr or not ss:
+        return None
+    return {
+        "morning": (sr - timedelta(hours=1), sr + timedelta(hours=1)),
+        "evening": (ss - timedelta(hours=1), ss + timedelta(hours=1)),
+    }
+
+def get_wind_hours(lat, lon):
+    # Get hourly wind and return dict time_iso -> mph
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=" + str(lat) +
@@ -226,21 +211,32 @@ def get_wind(lat, lon):
         data = get_json(url)
         out = {}
         for t, s in zip(data["hourly"]["time"], data["hourly"]["wind_speed_10m"]):
-            hour = datetime.fromisoformat(t).strftime("%H:00")
-            out[hour] = round(s, 1)
+            out[t] = round(s, 1)
         return out
     except Exception:
         return {}
 
-def best_times(lat, lon, day_obj):
-    day_iso = day_obj.isoformat()
-    sr, ss = get_sun_times(lat, lon, day_iso)
-    if not sr or not ss:
-        return None
-    return {
-        "morning": (sr - timedelta(hours=1), sr + timedelta(hours=1)),
-        "evening": (ss - timedelta(hours=1), ss + timedelta(hours=1)),
-    }
+def split_current_future_winds(wind_by_time, now_local):
+    # wind_by_time: { "YYYY-MM-DDTHH:MM": mph }
+    # Return (current_list, future_list) as list of tuples: (label, mph)
+    current = []
+    future = []
+    keys = sorted(list(wind_by_time.keys()))
+    for k in keys:
+        try:
+            dt = datetime.fromisoformat(k)
+        except Exception:
+            continue
+        mph = wind_by_time.get(k)
+        label = dt.strftime("%a %b %d, %I %p").replace(" 0", " ").replace(":00", "")
+        if dt <= now_local:
+            current.append((label, mph))
+        else:
+            future.append((label, mph))
+    # Keep the most recent 6 "current" points and next 12 "future" points
+    current = current[-6:]
+    future = future[:12]
+    return current, future
 
 def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0 or line_test_lb <= 0:
@@ -295,15 +291,8 @@ def species_tip_db():
         "Kokanee": {
             "temp_f": (42, 55),
             "Depths": ["Mid"],
-            "Baits": [
-                "Small hoochies",
-                "Small spinners (wedding ring)",
-                "Corn with scent (where used/allowed)",
-            ],
-            "Rigs": [
-                "Dodger + leader + hoochie/spinner",
-                "Weights or downrigger to match marks",
-            ],
+            "Baits": ["Small hoochies", "Small spinners (wedding ring)", "Corn with scent (where used)"],
+            "Rigs": ["Dodger + leader + hoochie/spinner", "Weights or downrigger to match marks"],
             "Mid": [
                 "Troll dodger plus small hoochie or spinner behind it.",
                 "Run scent and tune speed until you get a steady rod thump.",
@@ -314,22 +303,11 @@ def species_tip_db():
                 "If you see fish at 35 ft, set gear at about 30 to 33 ft."
             ],
         },
-
         "Rainbow trout": {
             "temp_f": (45, 65),
             "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": [
-                "Small spoons",
-                "Inline spinners",
-                "Floating minnows",
-                "Worms (where legal)",
-                "PowerBait (where legal)",
-            ],
-            "Rigs": [
-                "Cast and retrieve (spinners/spoons/minnows)",
-                "Trolling with long leads",
-                "Slip sinker bait rig (near bottom)",
-            ],
+            "Baits": ["Small spoons", "Inline spinners", "Floating minnows", "Worms (where legal)", "PowerBait (where legal)"],
+            "Rigs": ["Cast and retrieve", "Trolling with long leads", "Slip sinker bait rig (near bottom)"],
             "Top": [
                 "When they are up, cast small spinners, spoons, or floating minnows.",
                 "Early morning wind lanes can be strong."
@@ -347,20 +325,11 @@ def species_tip_db():
                 "Follow food and temperature changes."
             ],
         },
-
         "Lake trout": {
             "temp_f": (42, 55),
             "Depths": ["Mid", "Bottom"],
-            "Baits": [
-                "Tube jigs",
-                "Large spoons",
-                "Blade baits",
-                "Swimbaits (deep presentations)",
-            ],
-            "Rigs": [
-                "Vertical jigging (heavy jig head + tube)",
-                "Deep trolling with weights or downrigger",
-            ],
+            "Baits": ["Tube jigs", "Large spoons", "Blade baits", "Swimbaits (deep)"],
+            "Rigs": ["Vertical jigging (heavy jig head + tube)", "Deep trolling with weights or downrigger"],
             "Mid": [
                 "If bait is suspended, troll big spoons or tubes through the marks.",
                 "Wide turns often trigger strikes."
@@ -374,20 +343,11 @@ def species_tip_db():
                 "When you find one, stay on that contour."
             ],
         },
-
         "Chinook salmon": {
             "temp_f": (44, 58),
             "Depths": ["Mid", "Bottom"],
-            "Baits": [
-                "Hoochies",
-                "Spoons",
-                "Spinners",
-                "Cut plug / herring style (where used/allowed)",
-            ],
-            "Rigs": [
-                "Flasher + leader + hoochie/spoon",
-                "Weights or downrigger for depth control",
-            ],
+            "Baits": ["Hoochies", "Spoons", "Spinners", "Cut plug / herring style (where used)"],
+            "Rigs": ["Flasher + leader + hoochie/spoon", "Weights or downrigger for depth control"],
             "Mid": [
                 "Troll flasher plus hoochie or spoon.",
                 "Adjust leader length until action looks right.",
@@ -402,25 +362,13 @@ def species_tip_db():
                 "Repeat the depth and speed that got your bite."
             ],
         },
-
         "Smallmouth bass": {
             "temp_f": (60, 75),
             "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": [
-                "Topwater walking baits",
-                "Poppers",
-                "Jerkbaits",
-                "Ned rigs",
-                "Tubes",
-                "Drop shot plastics",
-            ],
-            "Rigs": [
-                "Ned rig (light jig head)",
-                "Drop shot rig",
-                "Tube jig",
-            ],
+            "Baits": ["Walking baits", "Poppers", "Jerkbaits", "Swimbaits", "Ned rigs", "Tubes", "Drop shot plastics"],
+            "Rigs": ["Ned rig", "Drop shot", "Tube jig"],
             "Top": [
-                "Walking baits, poppers early and late.",
+                "Walking baits and poppers early and late.",
                 "Wind on points can make topwater fire."
             ],
             "Mid": [
@@ -436,24 +384,13 @@ def species_tip_db():
                 "After a miss, throw a Ned or drop shot back."
             ],
         },
-
         "Largemouth bass": {
             "temp_f": (65, 80),
             "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": [
-                "Frogs",
-                "Buzzbaits",
-                "Swim jigs",
-                "Texas rig plastics",
-                "Jigs",
-            ],
-            "Rigs": [
-                "Texas rig",
-                "Swim jig",
-                "Pitching jig",
-            ],
+            "Baits": ["Frogs", "Buzzbaits", "Swim jigs", "Texas rig plastics", "Jigs"],
+            "Rigs": ["Texas rig", "Swim jig", "Pitching jig"],
             "Top": [
-                "Frog, buzz bait, popper around weeds and shade lines.",
+                "Frog and buzzbait around weeds and shade lines.",
                 "Target calm pockets in vegetation."
             ],
             "Mid": [
@@ -469,21 +406,11 @@ def species_tip_db():
                 "Dirty water: go louder and bigger."
             ],
         },
-
         "Walleye": {
             "temp_f": (55, 70),
             "Depths": ["Mid", "Bottom"],
-            "Baits": [
-                "Crankbaits (trolling)",
-                "Jigs with soft plastics",
-                "Jigs with crawler (where used/allowed)",
-                "Blade baits",
-            ],
-            "Rigs": [
-                "Jig and soft plastic (near bottom)",
-                "Bottom bouncer + harness (where used)",
-                "Trolling crankbaits on breaks",
-            ],
+            "Baits": ["Crankbaits (trolling)", "Jigs with soft plastics", "Jigs with crawler (where used)", "Blade baits"],
+            "Rigs": ["Jig and soft plastic", "Bottom bouncer + harness (where used)", "Trolling crankbaits on breaks"],
             "Mid": [
                 "Troll crankbaits along breaks at dusk and dawn.",
                 "If suspended, match that depth and keep moving."
@@ -497,20 +424,11 @@ def species_tip_db():
                 "Stay on transitions: flats to deep breaks."
             ],
         },
-
         "Perch": {
             "temp_f": (55, 75),
             "Depths": ["Mid", "Bottom"],
-            "Baits": [
-                "Small jigs",
-                "Worm pieces",
-                "Minnow (where allowed)",
-                "Soft plastics (tiny grubs)",
-            ],
-            "Rigs": [
-                "Small jighead + bait",
-                "Dropper loop with small hook (where used)",
-            ],
+            "Baits": ["Small jigs", "Worm pieces", "Minnow (where allowed)", "Tiny grubs"],
+            "Rigs": ["Small jighead + bait", "Dropper loop with small hook (where used)"],
             "Mid": [
                 "Small jigs tipped with bait, slowly swum through schools.",
                 "If you find one, there are usually more."
@@ -524,72 +442,37 @@ def species_tip_db():
                 "When you mark a school, hold position and pick them off."
             ],
         },
-
         "Bluegill": {
             "temp_f": (65, 80),
             "Depths": ["Top", "Mid"],
-            "Baits": [
-                "Tiny poppers",
-                "Small jigs",
-                "Worm pieces",
-                "Soft plastics (micro)",
-            ],
-            "Rigs": [
-                "Float + small jig/hook",
-                "Ultralight jighead",
-            ],
-            "Top": [
-                "Tiny poppers can work in summer near shade and cover."
-            ],
+            "Baits": ["Tiny poppers", "Small jigs", "Worm pieces", "Micro plastics"],
+            "Rigs": ["Float + small jig/hook", "Ultralight jighead"],
+            "Top": ["Tiny poppers can work in summer near shade and cover."],
             "Mid": [
                 "Small jigs under a float with slow retrieves and pauses.",
                 "Downsize until you get consistent bites."
             ],
-            "Quick": [
-                "Beds: fish edges gently. Light line and small hooks matter."
-            ],
+            "Quick": ["Beds: fish edges gently. Light line and small hooks matter."],
         },
-
         "Channel catfish": {
             "temp_f": (65, 85),
             "Depths": ["Bottom"],
-            "Baits": [
-                "Cut bait",
-                "Worms",
-                "Stink bait",
-                "Chicken liver (where used/allowed)",
-            ],
-            "Rigs": [
-                "Slip sinker / Carolina rig",
-                "Santee Cooper style rig (float the bait slightly)",
-            ],
+            "Baits": ["Cut bait", "Worms", "Stink bait", "Chicken liver (where used)"],
+            "Rigs": ["Slip sinker / Carolina rig", "Santee Cooper style (float bait slightly)"],
             "Bottom": [
                 "Soak bait on scent trails: cut bait, worms, stink bait.",
                 "Target holes, outside bends, slow water near current.",
                 "Reset to fresh bait if it goes quiet."
             ],
-            "Quick": [
-                "Evening and night are prime.",
-                "Let them load the rod before setting hook."
-            ],
+            "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
         },
-
         "Trout (general)": {
             "temp_f": (45, 65),
             "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": [
-                "Spoons",
-                "Inline spinners",
-                "Worms (where legal)",
-                "PowerBait (where legal)",
-            ],
-            "Rigs": [
-                "Cast and retrieve",
-                "Trolling (long leads)",
-                "Slip sinker bait rig",
-            ],
-            "Top": ["Cast small spoons and spinners when you see surface activity."],
-            "Mid": ["Troll spinners and small spoons at steady speed. Longer leads in clear water."],
+            "Baits": ["Spoons", "Inline spinners", "Worms (where legal)", "PowerBait (where legal)"],
+            "Rigs": ["Cast and retrieve", "Trolling (long leads)", "Slip sinker bait rig"],
+            "Top": ["Cast spoons and spinners when you see surface activity."],
+            "Mid": ["Troll spinners and small spoons. Longer leads in clear water."],
             "Bottom": ["Slip sinker and keep bait just off bottom. Slow down if bites are short."],
             "Quick": ["Match hatch. Cloud cover and chop can help."],
         },
@@ -606,7 +489,6 @@ def render_species_tips(name, db):
     baits = info.get("Baits", [])
     rigs = info.get("Rigs", [])
 
-    # Top card
     st.markdown(
         "<div class='card'>"
         "<div class='card-title'>Species</div>"
@@ -615,18 +497,15 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
-    # Temp range
     if lo is not None and hi is not None:
         st.markdown(
             "<div class='card'>"
             "<div class='card-title'>Most active water temperature range</div>"
             "<div class='card-value'>" + str(lo) + " to " + str(hi) + " F</div>"
-            "<div style='margin-top:10px;'><span class='badge'>Range only</span></div>"
             "</div>",
             unsafe_allow_html=True,
         )
 
-    # Baits + rigs cards
     if baits:
         st.markdown(
             "<div class='card'>"
@@ -655,7 +534,6 @@ def render_species_tips(name, db):
             unsafe_allow_html=True,
         )
 
-    # Only render depth sections that are allowed for this fish
     if "Top" in depths:
         section("Topwater", "Top")
     if "Mid" in depths:
@@ -663,7 +541,6 @@ def render_species_tips(name, db):
     if "Bottom" in depths:
         section("Bottom", "Bottom")
 
-    # Quick tips always show if present
     if info.get("Quick"):
         section("Quick tips", "Quick")
 
@@ -740,7 +617,7 @@ def render_header(title, centered=False):
         st.markdown(
             "<div class='home-center'>"
             "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
-            "<div class='small' style='margin-top:10px;'>Use the menu to open Best fishing times.</div>"
+            "<div class='small' style='margin-top:10px;'>Use the menu to open a tool.</div>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -770,6 +647,7 @@ if "best_go" not in st.session_state:
 PAGE_TITLES = {
     "Home": "",
     "Best fishing times": "Best Fishing Times",
+    "Wind forecast": "Wind Forecast",
     "Trolling depth calculator": "Trolling Depth Calculator",
     "Water temperature targeting": "Water Temperature Targeting",
     "Species tips": "Species Tips",
@@ -780,17 +658,18 @@ PAGE_TITLES = {
 # Sidebar navigation (with centered logo at top)
 # -------------------------------------------------
 with st.sidebar:
-    st.markdown(
-        "<div class='sb-logo'><img src='" + LOGO_URL + "'></div>",
-        unsafe_allow_html=True,
-    )
-
+    st.markdown("<div class='sb-logo'><img src='" + LOGO_URL + "'></div>", unsafe_allow_html=True)
     st.caption("Version " + APP_VERSION)
 
     if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
         st.session_state["tool"] = "Best fishing times"
         st.session_state["lat"], st.session_state["lon"] = get_location()
         st.session_state["best_go"] = False
+        request_sidebar_collapse()
+
+    if st.button("Wind forecast", use_container_width=True, key="nav_wind"):
+        st.session_state["tool"] = "Wind forecast"
+        st.session_state["lat"], st.session_state["lon"] = get_location()
         request_sidebar_collapse()
 
     if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
@@ -815,7 +694,7 @@ run_sidebar_collapse_if_needed()
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
-# Home page: logo only (fits screen)
+# Home page
 # -------------------------------------------------
 if tool == "Home":
     render_header("", centered=True)
@@ -835,7 +714,6 @@ if tool == "Best fishing times":
 
     st.markdown("### Location")
 
-    # Side-by-side latitude and longitude (always)
     c0, c1 = st.columns(2)
     with c0:
         lat_in = st.text_input("Latitude (optional)", value=("" if lat is None else str(lat)), key="manual_lat")
@@ -924,17 +802,69 @@ if tool == "Best fishing times":
                     unsafe_allow_html=True,
                 )
 
-                st.markdown("### Wind (mph)")
-                wind = get_wind(lat, lon)
-                for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
-                    st.markdown(
-                        "<div class='card compact-card'><div class='card-title'>" + h +
-                        "</div><div class='card-value'>" +
-                        str(wind.get(h, "--")) + " mph</div></div>",
-                        unsafe_allow_html=True,
-                    )
+elif tool == "Wind forecast":
+    st.markdown("### Wind forecast")
+    st.markdown("<div class='small'>Current and future hourly winds from your location or manual lat/lon.</div>", unsafe_allow_html=True)
+
+    lat = st.session_state.get("lat")
+    lon = st.session_state.get("lon")
+
+    st.markdown("### Location")
+    c0, c1 = st.columns(2)
+    with c0:
+        lat_in = st.text_input("Latitude (optional)", value=("" if lat is None else str(lat)), key="wind_lat")
+    with c1:
+        lon_in = st.text_input("Longitude (optional)", value=("" if lon is None else str(lon)), key="wind_lon")
+
+    use_manual = False
+    try:
+        if lat_in.strip() != "" and lon_in.strip() != "":
+            lat_m = float(lat_in.strip())
+            lon_m = float(lon_in.strip())
+            if -90.0 <= lat_m <= 90.0 and -180.0 <= lon_m <= 180.0:
+                lat, lon = lat_m, lon_m
+                use_manual = True
+            else:
+                st.warning("Latitude must be -90 to 90. Longitude must be -180 to 180.")
+    except Exception:
+        st.warning("Latitude and longitude must be numbers.")
+
+    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
+
+    if st.button("Display winds", use_container_width=True, key="go_winds"):
+        if not use_manual:
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+        else:
+            st.session_state["lat"], st.session_state["lon"] = lat, lon
+
+    lat = st.session_state.get("lat")
+    lon = st.session_state.get("lon")
+
+    if lat is None or lon is None:
+        st.info("Enter latitude and longitude, or tap Display winds.")
     else:
-        st.markdown("<div class='small'>Tap the button to show date range and results.</div>", unsafe_allow_html=True)
+        wind = get_wind_hours(lat, lon)
+        now_local = datetime.now()
+
+        current, future = split_current_future_winds(wind, now_local)
+
+        if current:
+            st.markdown("#### Current winds")
+            for label, mph in current:
+                st.markdown(
+                    "<div class='card compact-card'><div class='card-title'>" + label +
+                    "</div><div class='card-value'>" + str(mph) + " mph</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+        if future:
+            st.markdown("#### Future winds")
+            for label, mph in future:
+                st.markdown(
+                    "<div class='card compact-card'><div class='card-title'>" + label +
+                    "</div><div class='card-value'>" + str(mph) + " mph</div></div>",
+                    unsafe_allow_html=True,
+                )
 
 elif tool == "Trolling depth calculator":
     st.markdown("### Trolling depth calculator")
@@ -948,7 +878,6 @@ elif tool == "Trolling depth calculator":
     with col1:
         line_type = st.radio("Line type", ["Braid", "Fluorocarbon", "Monofilament"])
     with col2:
-        # Default is 12 lb (index=3)
         line_test = st.selectbox("Line test (lb)", [6, 8, 10, 12, 15, 20, 25, 30, 40, 50], index=3)
 
     depth = trolling_depth(speed, weight, line_out, line_type, line_test)
@@ -1037,7 +966,7 @@ else:
     phone_speedometer_widget()
 
 # -------------------------------------------------
-# Footer
+# Footer (no copyright, per request)
 # -------------------------------------------------
 st.markdown(
     "<div class='footer'><strong>FishyNW.com</strong><br>"
