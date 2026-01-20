@@ -4,6 +4,7 @@
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
+import uuid
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
@@ -62,80 +63,11 @@ def run_sidebar_collapse_if_needed():
     st.session_state["collapse_sidebar"] = False
 
 # -------------------------------------------------
-# Styles (neutral, no branded colors)
+# Styles (neutral + light green buttons with contrast)
 # -------------------------------------------------
 st.markdown(
     """
 <style>
-/* -----------------------------------------------
-   Replace sidebar collapse icon with hamburger
------------------------------------------------- */
-
-/* Hide default arrow icon */
-button[title="Collapse sidebar"] svg,
-button[aria-label="Collapse sidebar"] svg {
-  display: none !important;
-}
-
-/* Add hamburger icon */
-button[title="Collapse sidebar"]::before,
-button[aria-label="Collapse sidebar"]::before {
-  content: "☰";
-  font-size: 22px;
-  font-weight: 900;
-  color: #0b2e13;
-  line-height: 1;
-}
-
-/* Hover effect */
-button[title="Collapse sidebar"]:hover::before,
-button[aria-label="Collapse sidebar"]:hover::before {
-  color: #04160a;
-}
-button[title="Collapse sidebar"],
-button[aria-label="Collapse sidebar"] {
-  min-width: 44px;
-  min-height: 44px;
-}
-
-/* -------------------------------------------------
-   Global button styling (light green, high contrast)
-------------------------------------------------- */
-
-/* Base button */
-button[kind="primary"],
-button,
-div.stButton > button {
-  background-color: #8fd19e !important;   /* light green */
-  color: #0b2e13 !important;              /* dark green text */
-  border: 1px solid #6fbf87 !important;
-  font-weight: 700 !important;
-  border-radius: 10px !important;
-}
-
-/* Hover */
-button[kind="primary"]:hover,
-button:hover,
-div.stButton > button:hover {
-  background-color: #7cc78f !important;
-  color: #08210f !important;
-}
-
-/* Active / pressed */
-button:active,
-div.stButton > button:active {
-  background-color: #6bbb83 !important;
-  color: #04160a !important;
-}
-
-/* Disabled */
-button:disabled,
-div.stButton > button:disabled {
-  background-color: #cfe8d6 !important;
-  color: #6b6b6b !important;
-  border-color: #b6d6c1 !important;
-}
-
 .block-container {
   padding-top: 1.15rem;
   padding-bottom: 3.25rem;
@@ -217,6 +149,36 @@ section[data-testid="stSidebar"] { width: 320px; }
 .tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
 .bul li { margin-bottom: 6px; }
+
+/* -------------------------------------------------
+   Global button styling (light green, high contrast)
+------------------------------------------------- */
+button[kind="primary"],
+button,
+div.stButton > button {
+  background-color: #8fd19e !important;
+  color: #0b2e13 !important;
+  border: 1px solid #6fbf87 !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+}
+button[kind="primary"]:hover,
+button:hover,
+div.stButton > button:hover {
+  background-color: #7cc78f !important;
+  color: #08210f !important;
+}
+button:active,
+div.stButton > button:active {
+  background-color: #6bbb83 !important;
+  color: #04160a !important;
+}
+button:disabled,
+div.stButton > button:disabled {
+  background-color: #cfe8d6 !important;
+  color: #6b6b6b !important;
+  border-color: #b6d6c1 !important;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -225,6 +187,11 @@ section[data-testid="stSidebar"] { width: 320px; }
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
+def get_json(url, timeout=10):
+    r = requests.get(url, headers=HEADERS, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
 # -------------------------------------------------
 # GA4 (server-side) analytics - Streamlit Community Cloud safe
 # Uses GA4 Measurement Protocol
@@ -235,16 +202,14 @@ def ga_get_client_id():
     return st.session_state["ga_client_id"]
 
 def ga_send_event(event_name, params=None, debug=False):
-    # params: dict of event params (simple types only)
     try:
         enabled = bool(st.secrets.get("GA_ENABLED", True))
         if not enabled:
             return
 
-        mid = st.secrets.get("GA_MEASUREMENT_ID", "").strip()
-        secret = st.secrets.get("GA_API_SECRET", "").strip()
+        mid = str(st.secrets.get("GA_MEASUREMENT_ID", "")).strip()
+        secret = str(st.secrets.get("GA_API_SECRET", "")).strip()
         if not mid or not secret:
-            # Secrets not set
             return
 
         if params is None:
@@ -264,16 +229,9 @@ def ga_send_event(event_name, params=None, debug=False):
         path = "/debug/mp/collect" if debug else "/mp/collect"
         url = base + path + "?measurement_id=" + mid + "&api_secret=" + secret
 
-        # Keep timeout short so analytics never slows your app
         requests.post(url, json=payload, timeout=3)
-
     except Exception:
-        # Never break the app for analytics
         return
-def get_json(url, timeout=10):
-    r = requests.get(url, headers=HEADERS, timeout=timeout)
-    r.raise_for_status()
-    return r.json()
 
 def get_location():
     try:
@@ -314,7 +272,6 @@ def best_times(lat, lon, day_obj):
     }
 
 def get_wind_hours(lat, lon):
-    # Get hourly wind and return dict time_iso -> mph
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=" + str(lat) +
@@ -331,8 +288,6 @@ def get_wind_hours(lat, lon):
         return {}
 
 def split_current_future_winds(wind_by_time, now_local):
-    # wind_by_time: { "YYYY-MM-DDTHH:MM": mph }
-    # Return (current_list, future_list) as list of tuples: (label, mph)
     current = []
     future = []
     keys = sorted(list(wind_by_time.keys()))
@@ -347,7 +302,6 @@ def split_current_future_winds(wind_by_time, now_local):
             current.append((label, mph))
         else:
             future.append((label, mph))
-    # Keep the most recent 6 "current" points and next 12 "future" points
     current = current[-6:]
     future = future[:12]
     return current, future
@@ -365,7 +319,6 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     return round(depth, 1)
 
 def inject_wiggle_button(button_text, delay_ms=5000):
-    # Best effort. Streamlit DOM can change. This tries to find a button by its visible text.
     safe_text = button_text.replace("\\", "\\\\").replace('"', '\\"')
     components.html(
         """
@@ -780,12 +733,6 @@ def render_header(title, centered=False):
 # -------------------------------------------------
 # Session defaults
 # -------------------------------------------------
-# -------------------------------------------------
-# Analytics: app_open once per session
-# -------------------------------------------------
-if "ga_open_sent" not in st.session_state:
-    st.session_state["ga_open_sent"] = True
-    ga_send_event("app_open", {"app_version": APP_VERSION}, debug=False)
 if "tool" not in st.session_state:
     st.session_state["tool"] = "Home"
 if "lat" not in st.session_state:
@@ -794,11 +741,14 @@ if "lon" not in st.session_state:
     st.session_state["lon"] = None
 if "best_go" not in st.session_state:
     st.session_state["best_go"] = False
+
 # -------------------------------------------------
-# Analytics: tool_open when tool changes
+# Analytics: app_open once per session
 # -------------------------------------------------
-if "ga_last_tool" not in st.session_state:
-    st.session_state["ga_last_tool"] = None
+if "ga_open_sent" not in st.session_state:
+    st.session_state["ga_open_sent"] = True
+    ga_send_event("app_open", {"app_version": APP_VERSION}, debug=False)
+
 PAGE_TITLES = {
     "Home": "",
     "Best fishing times": "Best Fishing Times",
@@ -844,6 +794,16 @@ run_sidebar_collapse_if_needed()
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
+# Analytics: tool_open when tool changes
+# -------------------------------------------------
+if "ga_last_tool" not in st.session_state:
+    st.session_state["ga_last_tool"] = None
+
+if tool != st.session_state["ga_last_tool"]:
+    st.session_state["ga_last_tool"] = tool
+    ga_send_event("tool_open", {"tool": tool, "app_version": APP_VERSION}, debug=False)
+
+# -------------------------------------------------
 # Home page
 # -------------------------------------------------
 if tool == "Home":
@@ -885,10 +845,10 @@ if tool == "Best fishing times":
 
     st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
-    # Wiggle this button after 5 seconds
     inject_wiggle_button("Display Best Fishing Times", 5000)
 
     if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
+        ga_send_event("action", {"name": "display_best_times", "tool": "Best fishing times"}, debug=False)
         st.session_state["best_go"] = True
         if not use_manual:
             st.session_state["lat"], st.session_state["lon"] = get_location()
@@ -984,10 +944,10 @@ elif tool == "Wind forecast":
 
     st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
-    # Wiggle this button after 5 seconds
     inject_wiggle_button("Display winds", 5000)
 
     if st.button("Display winds", use_container_width=True, key="go_winds"):
+        ga_send_event("action", {"name": "display_winds", "tool": "Wind forecast"}, debug=False)
         if not use_manual:
             st.session_state["lat"], st.session_state["lon"] = get_location()
         else:
