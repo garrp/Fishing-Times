@@ -64,6 +64,7 @@ def run_sidebar_collapse_if_needed():
 
 # -------------------------------------------------
 # Styles (neutral + light green buttons with contrast)
+# Add: numeric-only keyboard for lat/lon inputs on mobile
 # -------------------------------------------------
 st.markdown(
     """
@@ -179,6 +180,15 @@ div.stButton > button:disabled {
   color: #6b6b6b !important;
   border-color: #b6d6c1 !important;
 }
+
+/* -------------------------------------------------
+   Numeric keyboard for lat/lon fields (mobile)
+   We set inputmode="decimal" and pattern to nudge
+   browsers to show a number keypad.
+------------------------------------------------- */
+.latlon input {
+  inputmode: decimal;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -191,6 +201,63 @@ def get_json(url, timeout=10):
     r = requests.get(url, headers=HEADERS, timeout=timeout)
     r.raise_for_status()
     return r.json()
+
+def force_numeric_keyboard_for_keys(keys, inputmode="decimal"):
+    """
+    Best-effort: set inputmode on Streamlit text inputs so mobile shows numeric keypad.
+    Note: Streamlit renders inputs inside the app iframe; this works in most mobile browsers.
+    """
+    keys_js = "[" + ",".join(['"%s"' % k for k in keys]) + "]"
+    mode = str(inputmode).replace('"', "")
+    components.html(
+        """
+<script>
+(function() {
+  var keys = %s;
+  var mode = "%s";
+
+  function apply() {
+    try {
+      // Streamlit text inputs render as: div[data-testid="stTextInput"] input
+      var wrappers = Array.prototype.slice.call(parent.document.querySelectorAll('div[data-testid="stTextInput"]'));
+      for (var i = 0; i < wrappers.length; i++) {
+        var w = wrappers[i];
+        var inp = w.querySelector("input");
+        if (!inp) continue;
+
+        // Streamlit sets an id like: stTextInput-<key>
+        var id = inp.getAttribute("id") || "";
+        var forKey = false;
+
+        for (var k = 0; k < keys.length; k++) {
+          if (id.indexOf(keys[k]) !== -1) { forKey = true; break; }
+        }
+        if (!forKey) continue;
+
+        inp.setAttribute("inputmode", mode);
+        inp.setAttribute("pattern", "[0-9\\-\\.]*");
+        // Optional: prevent accidental autocomplete junk
+        inp.setAttribute("autocomplete", "off");
+        inp.setAttribute("autocorrect", "off");
+        inp.setAttribute("autocapitalize", "off");
+        inp.setAttribute("spellcheck", "false");
+      }
+    } catch (e) {}
+  }
+
+  // Try now and a few times after render
+  apply();
+  var tries = 0;
+  var iv = setInterval(function() {
+    tries += 1;
+    apply();
+    if (tries >= 20) clearInterval(iv);
+  }, 250);
+})();
+</script>
+""" % (keys_js, mode),
+        height=0,
+    )
 
 # -------------------------------------------------
 # Analytics consent banner (session-only)
@@ -870,6 +937,9 @@ if tool == "Best fishing times":
     with c1:
         lon_in = st.text_input("Longitude (optional)", value=("" if lon is None else str(lon)), key="manual_lon")
 
+    # Force numeric keyboard on these fields (best effort)
+    force_numeric_keyboard_for_keys(["manual_lat", "manual_lon"], inputmode="decimal")
+
     use_manual = False
     try:
         if lat_in.strip() != "" and lon_in.strip() != "":
@@ -968,6 +1038,9 @@ elif tool == "Wind forecast":
         lat_in = st.text_input("Latitude (optional)", value=("" if lat is None else str(lat)), key="wind_lat")
     with c1:
         lon_in = st.text_input("Longitude (optional)", value=("" if lon is None else str(lon)), key="wind_lon")
+
+    # Force numeric keyboard on these fields (best effort)
+    force_numeric_keyboard_for_keys(["wind_lat", "wind_lon"], inputmode="decimal")
 
     use_manual = False
     try:
