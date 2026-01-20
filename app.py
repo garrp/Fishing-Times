@@ -67,6 +67,37 @@ def run_sidebar_collapse_if_needed():
 st.markdown(
     """
 <style>
+/* -----------------------------------------------
+   Replace sidebar collapse icon with hamburger
+------------------------------------------------ */
+
+/* Hide default arrow icon */
+button[title="Collapse sidebar"] svg,
+button[aria-label="Collapse sidebar"] svg {
+  display: none !important;
+}
+
+/* Add hamburger icon */
+button[title="Collapse sidebar"]::before,
+button[aria-label="Collapse sidebar"]::before {
+  content: "☰";
+  font-size: 22px;
+  font-weight: 900;
+  color: #0b2e13;
+  line-height: 1;
+}
+
+/* Hover effect */
+button[title="Collapse sidebar"]:hover::before,
+button[aria-label="Collapse sidebar"]:hover::before {
+  color: #04160a;
+}
+button[title="Collapse sidebar"],
+button[aria-label="Collapse sidebar"] {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 /* -------------------------------------------------
    Global button styling (light green, high contrast)
 ------------------------------------------------- */
