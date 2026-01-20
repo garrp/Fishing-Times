@@ -58,6 +58,11 @@ st.markdown(
 }
 section[data-testid="stSidebar"] { width: 320px; }
 
+/* Make sure the main app text is readable (Streamlit sometimes injects light grays) */
+section.main, section.main * {
+  color: """ + DARK_TEXT + """ !important;
+}
+
 /* Sidebar background (not transparent) */
 section[data-testid="stSidebar"] > div {
   background: """ + SIDEBAR_BG + """;
@@ -69,7 +74,7 @@ section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] p,
 section[data-testid="stSidebar"] span,
 section[data-testid="stSidebar"] div {
-  color: """ + CREAM_TEXT + """;
+  color: """ + CREAM_TEXT + """ !important;
 }
 
 /* Buttons: all light green */
@@ -113,7 +118,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   padding: 16px;
   margin-top: 14px;
 }
-.card-title { font-size: 1rem; opacity: 0.90; }
+.card-title { font-size: 1rem; opacity: 0.92; }
 .card-value { font-size: 1.6rem; font-weight: 900; }
 
 /* Compact cards for fishing times only */
@@ -150,56 +155,65 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 /* ---------------------------- */
 /* LIGHT MODE (Streamlit default) */
 /* ---------------------------- */
-.small { color: rgba(0,0,0,0.70); font-size: 0.95rem; }
+.small { color: rgba(0,0,0,0.78) !important; font-size: 0.95rem; }
 
-.header-title { color: """ + DARK_TEXT + """; }
+.header-title { color: """ + DARK_TEXT + """ !important; }
 
 .card {
   border: 1px solid """ + CARD_BORDER_LIGHT + """;
   background: """ + CARD_BG_LIGHT + """;
 }
-.card-title { color: """ + DARK_TEXT + """; }
-.card-value { color: """ + DARK_TEXT + """; }
 
-.tip-h { color: """ + DARK_TEXT + """; }
-.bul li { color: """ + DARK_TEXT + """; }
+/* Force card text contrast (this is what fixes the washed-out look) */
+.card-title { color: """ + DARK_TEXT + """ !important; }
+.card-value { color: """ + DARK_TEXT + """ !important; }
+
+.tip-h { color: """ + DARK_TEXT + """ !important; }
+.bul li { color: """ + DARK_TEXT + """ !important; }
 
 .badge {
   border: 1px solid """ + CARD_BORDER_LIGHT + """;
   background: rgba(0,0,0,0.03);
-  color: """ + DARK_TEXT + """;
+  color: """ + DARK_TEXT + """ !important;
 }
 
-.footer { color: rgba(0,0,0,0.72); }
+.footer { color: rgba(0,0,0,0.78) !important; }
 
 /* ---------------------------- */
 /* DARK MODE */
-/* - Targets system/user dark mode preference
+/* Targets system/user dark mode preference */
 /* ---------------------------- */
 @media (prefers-color-scheme: dark) {
-  .small { color: rgba(246,242,231,0.78); }
 
-  .header-title { color: """ + CREAM_TEXT + """; }
+  /* Main app text in dark mode */
+  section.main, section.main * {
+    color: """ + CREAM_TEXT + """ !important;
+  }
+
+  .small { color: rgba(246,242,231,0.82) !important; }
+
+  .header-title { color: """ + CREAM_TEXT + """ !important; }
 
   .card {
     border: 1px solid """ + CARD_BORDER_DARK + """;
     background: """ + CARD_BG_DARK + """;
   }
-  .card-title { color: """ + CREAM_TEXT + """; }
-  .card-value { color: """ + CREAM_TEXT + """; }
 
-  .tip-h { color: """ + CREAM_TEXT + """; }
-  .bul li { color: """ + CREAM_TEXT + """; }
+  .card-title { color: """ + CREAM_TEXT + """ !important; }
+  .card-value { color: """ + CREAM_TEXT + """ !important; }
+
+  .tip-h { color: """ + CREAM_TEXT + """ !important; }
+  .bul li { color: """ + CREAM_TEXT + """ !important; }
 
   .badge {
     border: 1px solid """ + SIDEBAR_BORDER + """;
     background: rgba(246,242,231,0.05);
-    color: """ + CREAM_TEXT + """;
+    color: """ + CREAM_TEXT + """ !important;
   }
 
   .footer {
     border-top: 1px solid """ + SIDEBAR_BORDER + """;
-    color: rgba(246,242,231,0.78);
+    color: rgba(246,242,231,0.82) !important;
   }
 }
 </style>
