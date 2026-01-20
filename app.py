@@ -38,7 +38,6 @@ st.markdown(
 }
 section[data-testid="stSidebar"] { width: 320px; }
 
-/* Soft neutral UI helpers (no forced light/dark) */
 .header-row {
   display: flex;
   align-items: center;
@@ -71,18 +70,15 @@ section[data-testid="stSidebar"] { width: 320px; }
 .card-title { font-size: 1rem; opacity: 0.92; }
 .card-value { font-size: 1.6rem; font-weight: 800; }
 
-/* Compact cards for fishing times only */
 .compact-card {
   margin-top: 8px !important;
   padding: 14px 16px !important;
 }
 
-/* Lists */
 .tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
 .bul li { margin-bottom: 6px; }
 
-/* Badge */
 .badge {
   display: inline-block;
   padding: 6px 10px;
@@ -94,10 +90,8 @@ section[data-testid="stSidebar"] { width: 320px; }
   background: rgba(0,0,0,0.03);
 }
 
-/* Small text */
 .small { opacity: 0.82; font-size: 0.95rem; }
 
-/* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
@@ -487,7 +481,7 @@ def phone_speedometer_widget():
 # Session defaults
 # -------------------------------------------------
 if "tool" not in st.session_state:
-    st.session_state["tool"] = "Best fishing times"
+    st.session_state["tool"] = "Home"
 if "lat" not in st.session_state:
     st.session_state["lat"] = None
 if "lon" not in st.session_state:
@@ -496,6 +490,7 @@ if "best_go" not in st.session_state:
     st.session_state["best_go"] = False
 
 PAGE_TITLES = {
+    "Home": "",
     "Best fishing times": "Best Fishing Times",
     "Trolling depth calculator": "Trolling Depth Calculator",
     "Water temperature targeting": "Water Temperature Targeting",
@@ -530,9 +525,15 @@ with st.sidebar:
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
+# Home page should be blank until Best fishing times is pressed
+# -------------------------------------------------
+if tool == "Home":
+    st.stop()
+
+# -------------------------------------------------
 # Header row
 # -------------------------------------------------
-page_title = PAGE_TITLES.get(tool, "FishyNW Tools")
+page_title = PAGE_TITLES.get(tool, "")
 
 st.markdown(
     "<div class='header-row'>"
@@ -579,9 +580,7 @@ if tool == "Best fishing times":
         else:
             st.session_state["lat"], st.session_state["lon"] = lat, lon
 
-    # Hide date inputs until user hits the button
     if st.session_state.get("best_go"):
-
         lat = st.session_state.get("lat")
         lon = st.session_state.get("lon")
 
