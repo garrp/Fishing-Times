@@ -67,6 +67,44 @@ def run_sidebar_collapse_if_needed():
 st.markdown(
     """
 <style>
+/* -------------------------------------------------
+   Global button styling (light green, high contrast)
+------------------------------------------------- */
+
+/* Base button */
+button[kind="primary"],
+button,
+div.stButton > button {
+  background-color: #8fd19e !important;   /* light green */
+  color: #0b2e13 !important;              /* dark green text */
+  border: 1px solid #6fbf87 !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+}
+
+/* Hover */
+button[kind="primary"]:hover,
+button:hover,
+div.stButton > button:hover {
+  background-color: #7cc78f !important;
+  color: #08210f !important;
+}
+
+/* Active / pressed */
+button:active,
+div.stButton > button:active {
+  background-color: #6bbb83 !important;
+  color: #04160a !important;
+}
+
+/* Disabled */
+button:disabled,
+div.stButton > button:disabled {
+  background-color: #cfe8d6 !important;
+  color: #6b6b6b !important;
+  border-color: #b6d6c1 !important;
+}
+
 .block-container {
   padding-top: 1.15rem;
   padding-bottom: 3.25rem;
