@@ -26,26 +26,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Branding colors
-# -------------------------------------------------
-CREAM_TEXT = "#f6f2e7"
-DARK_TEXT = "#0b0f12"
-
-SIDEBAR_BG = "#071b1f"
-SIDEBAR_BORDER = "rgba(246,242,231,0.14)"
-
-CARD_BG_DARK = "rgba(246,242,231,0.05)"
-CARD_BORDER_DARK = "rgba(246,242,231,0.14)"
-
-CARD_BG_LIGHT = "rgba(0,0,0,0.04)"
-CARD_BORDER_LIGHT = "rgba(0,0,0,0.12)"
-
-GREEN_BTN = "#6fbf4a"
-GREEN_BTN_HOVER = "#63ad41"
-
-# -------------------------------------------------
-# Styles (ASCII SAFE)
-# - Forced dark mode always
+# Styles (neutral, no branded colors)
 # -------------------------------------------------
 st.markdown(
     """
@@ -57,44 +38,7 @@ st.markdown(
 }
 section[data-testid="stSidebar"] { width: 320px; }
 
-/* FORCE DARK MODE (do not rely on prefers-color-scheme) */
-html, body, [data-testid="stAppViewContainer"] {
-  background: #0e1117 !important;
-}
-
-/* Main content text */
-section.main, section.main * {
-  color: """ + CREAM_TEXT + """ !important;
-}
-
-/* Sidebar background (not transparent) */
-section[data-testid="stSidebar"] > div {
-  background: """ + SIDEBAR_BG + """;
-  border-right: 1px solid """ + SIDEBAR_BORDER + """;
-}
-
-/* Sidebar text (always light for readability) */
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] div {
-  color: """ + CREAM_TEXT + """ !important;
-}
-
-/* Buttons: all light green */
-button { border-radius: 14px; }
-section[data-testid="stSidebar"] .stButton > button {
-  width: 100%;
-  background: """ + GREEN_BTN + """ !important;
-  border: 1px solid rgba(0,0,0,0.12) !important;
-  color: #0b1a12 !important;
-  font-weight: 900 !important;
-}
-section[data-testid="stSidebar"] .stButton > button:hover {
-  background: """ + GREEN_BTN_HOVER + """ !important;
-}
-
-/* Header row */
+/* Soft neutral UI helpers (no forced light/dark) */
 .header-row {
   display: flex;
   align-items: center;
@@ -111,10 +55,9 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 }
 .header-title {
   text-align: right;
-  font-weight: 900;
+  font-weight: 800;
   font-size: 1.15rem;
   line-height: 1.25rem;
-  color: """ + CREAM_TEXT + """ !important;
 }
 
 /* Cards */
@@ -122,13 +65,11 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   border-radius: 18px;
   padding: 16px;
   margin-top: 14px;
-  border: 1px solid """ + CARD_BORDER_DARK + """;
-  background: """ + CARD_BG_DARK + """;
+  border: 1px solid rgba(0,0,0,0.14);
+  background: rgba(0,0,0,0.03);
 }
-
-/* Force card text contrast */
-.card-title { font-size: 1rem; opacity: 0.92; color: """ + CREAM_TEXT + """ !important; }
-.card-value { font-size: 1.6rem; font-weight: 900; color: """ + CREAM_TEXT + """ !important; }
+.card-title { font-size: 1rem; opacity: 0.92; }
+.card-value { font-size: 1.6rem; font-weight: 800; }
 
 /* Compact cards for fishing times only */
 .compact-card {
@@ -137,9 +78,9 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 }
 
 /* Lists */
-.tip-h { font-weight: 900; margin-top: 10px; color: """ + CREAM_TEXT + """ !important; }
+.tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
-.bul li { margin-bottom: 6px; color: """ + CREAM_TEXT + """ !important; }
+.bul li { margin-bottom: 6px; }
 
 /* Badge */
 .badge {
@@ -147,25 +88,23 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   padding: 6px 10px;
   border-radius: 999px;
   margin: 6px 6px 0 0;
-  font-weight: 900;
+  font-weight: 800;
   font-size: 0.92rem;
-  border: 1px solid """ + SIDEBAR_BORDER + """;
-  background: rgba(246,242,231,0.05);
-  color: """ + CREAM_TEXT + """ !important;
+  border: 1px solid rgba(0,0,0,0.14);
+  background: rgba(0,0,0,0.03);
 }
 
 /* Small text */
-.small { color: rgba(246,242,231,0.82) !important; font-size: 0.95rem; }
+.small { opacity: 0.82; font-size: 0.95rem; }
 
 /* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
-  border-top: 1px solid """ + SIDEBAR_BORDER + """;
+  border-top: 1px solid rgba(0,0,0,0.14);
   text-align: center;
   font-size: 0.95rem;
   opacity: 0.90;
-  color: rgba(246,242,231,0.82) !important;
 }
 </style>
 """,
@@ -466,7 +405,10 @@ def render_species_tips(name, db):
 
     def section(title, items):
         st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
-        st.markdown("<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>", unsafe_allow_html=True)
+        st.markdown(
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>",
+            unsafe_allow_html=True,
+        )
 
     section("Topwater", info.get("Top", ["No tips available."]))
     section("Mid water", info.get("Mid", ["No tips available."]))
@@ -475,7 +417,7 @@ def render_species_tips(name, db):
 
 def phone_speedometer_widget():
     html = """
-    <div id="wrap" style="padding:12px;border:1px solid rgba(246,242,231,0.16);border-radius:18px;background:rgba(246,242,231,0.05);">
+    <div id="wrap" style="padding:12px;border:1px solid rgba(0,0,0,0.14);border-radius:18px;background:rgba(0,0,0,0.03);">
       <style>
         #wrap { --dial: 112px; --mph: 34px; --gap: 12px; }
         @media (min-width: 720px) { #wrap { --dial: 160px; --mph: 44px; --gap: 16px; } }
@@ -484,28 +426,28 @@ def phone_speedometer_widget():
           width: var(--dial);
           height: var(--dial);
           border-radius: 999px;
-          border: 2px solid rgba(246,242,231,0.22);
+          border: 2px solid rgba(0,0,0,0.18);
           display:flex;
           align-items:center;
           justify-content:center;
         }
-        .mph { font-size: var(--mph); font-weight: 900; line-height: 1.0; color:#f6f2e7; }
+        .mph { font-size: var(--mph); font-weight: 800; line-height: 1.0; color: inherit; }
       </style>
 
-      <div style="font-weight:900;font-size:18px;margin-bottom:6px;color:#f6f2e7;">Speedometer</div>
-      <div id="status" style="opacity:0.88;margin-bottom:8px;color:#f6f2e7;">Allow location permission...</div>
+      <div style="font-weight:800;font-size:18px;margin-bottom:6px;">Speedometer</div>
+      <div id="status" style="opacity:0.88;margin-bottom:8px;">Allow location permission...</div>
 
       <div class="row">
         <div class="dial">
           <div style="text-align:center;">
             <div id="mph" class="mph">--</div>
-            <div style="opacity:0.85;color:#f6f2e7;">mph</div>
+            <div style="opacity:0.85;">mph</div>
           </div>
         </div>
 
         <div style="flex:1;">
-          <div id="acc" style="opacity:0.82;color:#f6f2e7;">Accuracy: --</div>
-          <div style="opacity:0.80;margin-top:6px;color:#f6f2e7;">If mph is --, start moving and wait a few seconds.</div>
+          <div id="acc" style="opacity:0.82;">Accuracy: --</div>
+          <div style="opacity:0.80;margin-top:6px;">If mph is --, start moving and wait a few seconds.</div>
         </div>
       </div>
     </div>
