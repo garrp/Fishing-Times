@@ -970,7 +970,7 @@ else:
 
 st.markdown(
     "<div class='footer'><strong>FishyNW.com</strong><br>"
-    "Independent Northwest fishing tools<br>"
+    "Independent fishing tools<br>"
     "&copy; 2026 FishyNW. All rights reserved."
     "</div>",
     unsafe_allow_html=True,
