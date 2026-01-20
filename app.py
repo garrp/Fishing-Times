@@ -45,8 +45,7 @@ GREEN_BTN_HOVER = "#63ad41"
 
 # -------------------------------------------------
 # Styles (ASCII SAFE)
-# - Light mode: dark text on light backgrounds
-# - Dark mode: light/cream text on dark backgrounds
+# - Forced dark mode always
 # -------------------------------------------------
 st.markdown(
     """
@@ -58,9 +57,14 @@ st.markdown(
 }
 section[data-testid="stSidebar"] { width: 320px; }
 
-/* Make sure the main app text is readable (Streamlit sometimes injects light grays) */
+/* FORCE DARK MODE (do not rely on prefers-color-scheme) */
+html, body, [data-testid="stAppViewContainer"] {
+  background: #0e1117 !important;
+}
+
+/* Main content text */
 section.main, section.main * {
-  color: """ + DARK_TEXT + """ !important;
+  color: """ + CREAM_TEXT + """ !important;
 }
 
 /* Sidebar background (not transparent) */
@@ -110,6 +114,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   font-weight: 900;
   font-size: 1.15rem;
   line-height: 1.25rem;
+  color: """ + CREAM_TEXT + """ !important;
 }
 
 /* Cards */
@@ -117,9 +122,13 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   border-radius: 18px;
   padding: 16px;
   margin-top: 14px;
+  border: 1px solid """ + CARD_BORDER_DARK + """;
+  background: """ + CARD_BG_DARK + """;
 }
-.card-title { font-size: 1rem; opacity: 0.92; }
-.card-value { font-size: 1.6rem; font-weight: 900; }
+
+/* Force card text contrast */
+.card-title { font-size: 1rem; opacity: 0.92; color: """ + CREAM_TEXT + """ !important; }
+.card-value { font-size: 1.6rem; font-weight: 900; color: """ + CREAM_TEXT + """ !important; }
 
 /* Compact cards for fishing times only */
 .compact-card {
@@ -128,9 +137,9 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 }
 
 /* Lists */
-.tip-h { font-weight: 900; margin-top: 10px; }
+.tip-h { font-weight: 900; margin-top: 10px; color: """ + CREAM_TEXT + """ !important; }
 .bul { margin-top: 8px; }
-.bul li { margin-bottom: 6px; }
+.bul li { margin-bottom: 6px; color: """ + CREAM_TEXT + """ !important; }
 
 /* Badge */
 .badge {
@@ -140,81 +149,23 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   margin: 6px 6px 0 0;
   font-weight: 900;
   font-size: 0.92rem;
+  border: 1px solid """ + SIDEBAR_BORDER + """;
+  background: rgba(246,242,231,0.05);
+  color: """ + CREAM_TEXT + """ !important;
 }
+
+/* Small text */
+.small { color: rgba(246,242,231,0.82) !important; font-size: 0.95rem; }
 
 /* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
-  border-top: 1px solid rgba(0,0,0,0.12);
+  border-top: 1px solid """ + SIDEBAR_BORDER + """;
   text-align: center;
   font-size: 0.95rem;
-  opacity: 0.88;
-}
-
-/* ---------------------------- */
-/* LIGHT MODE (Streamlit default) */
-/* ---------------------------- */
-.small { color: rgba(0,0,0,0.78) !important; font-size: 0.95rem; }
-
-.header-title { color: """ + DARK_TEXT + """ !important; }
-
-.card {
-  border: 1px solid """ + CARD_BORDER_LIGHT + """;
-  background: """ + CARD_BG_LIGHT + """;
-}
-
-/* Force card text contrast (this is what fixes the washed-out look) */
-.card-title { color: """ + DARK_TEXT + """ !important; }
-.card-value { color: """ + DARK_TEXT + """ !important; }
-
-.tip-h { color: """ + DARK_TEXT + """ !important; }
-.bul li { color: """ + DARK_TEXT + """ !important; }
-
-.badge {
-  border: 1px solid """ + CARD_BORDER_LIGHT + """;
-  background: rgba(0,0,0,0.03);
-  color: """ + DARK_TEXT + """ !important;
-}
-
-.footer { color: rgba(0,0,0,0.78) !important; }
-
-/* ---------------------------- */
-/* DARK MODE */
-/* Targets system/user dark mode preference */
-/* ---------------------------- */
-@media (prefers-color-scheme: dark) {
-
-  /* Main app text in dark mode */
-  section.main, section.main * {
-    color: """ + CREAM_TEXT + """ !important;
-  }
-
-  .small { color: rgba(246,242,231,0.82) !important; }
-
-  .header-title { color: """ + CREAM_TEXT + """ !important; }
-
-  .card {
-    border: 1px solid """ + CARD_BORDER_DARK + """;
-    background: """ + CARD_BG_DARK + """;
-  }
-
-  .card-title { color: """ + CREAM_TEXT + """ !important; }
-  .card-value { color: """ + CREAM_TEXT + """ !important; }
-
-  .tip-h { color: """ + CREAM_TEXT + """ !important; }
-  .bul li { color: """ + CREAM_TEXT + """ !important; }
-
-  .badge {
-    border: 1px solid """ + SIDEBAR_BORDER + """;
-    background: rgba(246,242,231,0.05);
-    color: """ + CREAM_TEXT + """ !important;
-  }
-
-  .footer {
-    border-top: 1px solid """ + SIDEBAR_BORDER + """;
-    color: rgba(246,242,231,0.82) !important;
-  }
+  opacity: 0.90;
+  color: rgba(246,242,231,0.82) !important;
 }
 </style>
 """,
@@ -599,6 +550,8 @@ if "lat" not in st.session_state:
     st.session_state["lat"] = None
 if "lon" not in st.session_state:
     st.session_state["lon"] = None
+if "best_go" not in st.session_state:
+    st.session_state["best_go"] = False
 
 PAGE_TITLES = {
     "Best fishing times": "Best Fishing Times",
@@ -618,6 +571,7 @@ with st.sidebar:
     if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
         st.session_state["tool"] = "Best fishing times"
         st.session_state["lat"], st.session_state["lon"] = get_location()
+        st.session_state["best_go"] = False
 
     if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
         st.session_state["tool"] = "Trolling depth calculator"
@@ -654,71 +608,108 @@ if tool == "Best fishing times":
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
 
-    st.markdown("### Date range")
-    c1, c2 = st.columns(2)
-    with c1:
-        start_day = st.date_input("Start date", value=date.today(), key="range_start")
-    with c2:
-        end_day = st.date_input("End date", value=date.today(), key="range_end")
+    st.markdown("### Location")
+    c0, c00 = st.columns(2)
+    with c0:
+        lat_in = st.text_input("Latitude (optional)", value=("" if lat is None else str(lat)), key="manual_lat")
+    with c00:
+        lon_in = st.text_input("Longitude (optional)", value=("" if lon is None else str(lon)), key="manual_lon")
 
-    st.markdown("<div class='small'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
+    use_manual = False
+    try:
+        if lat_in.strip() != "" and lon_in.strip() != "":
+            lat_m = float(lat_in.strip())
+            lon_m = float(lon_in.strip())
+            if -90.0 <= lat_m <= 90.0 and -180.0 <= lon_m <= 180.0:
+                lat, lon = lat_m, lon_m
+                use_manual = True
+            else:
+                st.warning("Latitude must be -90 to 90. Longitude must be -180 to 180.")
+    except Exception:
+        st.warning("Latitude and longitude must be numbers.")
 
-    if end_day < start_day:
-        st.warning("End date must be the same as or after start date.")
-    elif lat is None or lon is None:
-        st.info("Tap 'Best fishing times' in the menu to use your current location.")
-    else:
-        day_list = []
-        cur = start_day
-        while cur <= end_day:
-            day_list.append(cur)
-            if len(day_list) >= 14:
-                break
-            cur = cur + timedelta(days=1)
+    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
-        if len(day_list) == 14 and end_day > day_list[-1]:
-            st.info("Showing first 14 days only. Shorten the range to see more detail.")
+    if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
+        st.session_state["best_go"] = True
+        if not use_manual:
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+        else:
+            st.session_state["lat"], st.session_state["lon"] = lat, lon
 
-        for d in day_list:
-            st.markdown("## " + d.strftime("%A") + " - " + d.strftime("%b %d, %Y"))
+    # Hide date inputs until user hits the button
+    if st.session_state.get("best_go"):
 
-            times = best_times(lat, lon, d)
-            if not times:
-                st.warning("Unable to calculate fishing times for this day.")
-                continue
+        lat = st.session_state.get("lat")
+        lon = st.session_state.get("lon")
 
-            m0, m1 = times["morning"]
-            e0, e1 = times["evening"]
+        st.markdown("### Date range")
+        c1, c2 = st.columns(2)
+        with c1:
+            start_day = st.date_input("Start date", value=date.today(), key="range_start")
+        with c2:
+            end_day = st.date_input("End date", value=date.today(), key="range_end")
 
-            st.markdown(
-                "<div class='card compact-card'><div class='card-title'>Morning window</div>"
-                "<div class='card-value'>" +
-                m0.strftime("%I:%M %p").lstrip("0") +
-                " - " +
-                m1.strftime("%I:%M %p").lstrip("0") +
-                "</div></div>",
-                unsafe_allow_html=True,
-            )
+        st.markdown("<div class='small'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
 
-            st.markdown(
-                "<div class='card compact-card'><div class='card-title'>Evening window</div>"
-                "<div class='card-value'>" +
-                e0.strftime("%I:%M %p").lstrip("0") +
-                " - " +
-                e1.strftime("%I:%M %p").lstrip("0") +
-                "</div></div>",
-                unsafe_allow_html=True,
-            )
+        if end_day < start_day:
+            st.warning("End date must be the same as or after start date.")
+        elif lat is None or lon is None:
+            st.info("Enter latitude and longitude, or tap the button again to use current location.")
+        else:
+            day_list = []
+            cur = start_day
+            while cur <= end_day:
+                day_list.append(cur)
+                if len(day_list) >= 14:
+                    break
+                cur = cur + timedelta(days=1)
 
-            st.markdown("### Wind (mph)")
-            wind = get_wind(lat, lon)
-            for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
+            if len(day_list) == 14 and end_day > day_list[-1]:
+                st.info("Showing first 14 days only. Shorten the range to see more detail.")
+
+            for d in day_list:
+                st.markdown("## " + d.strftime("%A") + " - " + d.strftime("%b %d, %Y"))
+
+                times = best_times(lat, lon, d)
+                if not times:
+                    st.warning("Unable to calculate fishing times for this day.")
+                    continue
+
+                m0, m1 = times["morning"]
+                e0, e1 = times["evening"]
+
                 st.markdown(
-                    "<div class='card compact-card'><div class='card-title'>" + h +
-                    "</div><div class='card-value'>" +
-                    str(wind.get(h, "--")) + " mph</div></div>",
+                    "<div class='card compact-card'><div class='card-title'>Morning window</div>"
+                    "<div class='card-value'>" +
+                    m0.strftime("%I:%M %p").lstrip("0") +
+                    " - " +
+                    m1.strftime("%I:%M %p").lstrip("0") +
+                    "</div></div>",
                     unsafe_allow_html=True,
                 )
+
+                st.markdown(
+                    "<div class='card compact-card'><div class='card-title'>Evening window</div>"
+                    "<div class='card-value'>" +
+                    e0.strftime("%I:%M %p").lstrip("0") +
+                    " - " +
+                    e1.strftime("%I:%M %p").lstrip("0") +
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown("### Wind (mph)")
+                wind = get_wind(lat, lon)
+                for h in ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]:
+                    st.markdown(
+                        "<div class='card compact-card'><div class='card-title'>" + h +
+                        "</div><div class='card-value'>" +
+                        str(wind.get(h, "--")) + " mph</div></div>",
+                        unsafe_allow_html=True,
+                    )
+    else:
+        st.markdown("<div class='small'>Tap the button to show date range and results.</div>", unsafe_allow_html=True)
 
 elif tool == "Trolling depth calculator":
     st.markdown("### Trolling depth calculator")
