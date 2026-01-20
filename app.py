@@ -250,38 +250,6 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
-def c_to_f(c):
-    return (c * 9.0 / 5.0) + 32.0
-
-def temp_rating(temp_f, lo, hi):
-    if lo <= temp_f <= hi:
-        return "Best"
-    if (lo - 5) <= temp_f < lo or hi < temp_f <= (hi + 5):
-        return "Fair"
-    return "Low"
-
-def temp_targets(temp_f):
-    t = temp_f
-    items = []
-
-    def add(name, lo, hi, note):
-        rating = temp_rating(t, lo, hi)
-        items.append((name, rating, note))
-
-    add("Trout (rainbow/brown)", 45, 65, "Cool water. Better early and in shade when warmer.")
-    add("Kokanee", 42, 55, "Cool water. Often deeper when surface warms.")
-    add("Chinook salmon", 44, 58, "Cool water. Often deeper and near current.")
-    add("Lake trout", 42, 55, "Cold water. Usually deeper structure.")
-    add("Smallmouth bass", 60, 75, "Warmer water. Rocks, points, wind-blown banks.")
-    add("Largemouth bass", 65, 80, "Warm water. Weeds and shallow cover.")
-    add("Walleye", 55, 70, "Mid temps. Low light windows are strong.")
-    add("Panfish (perch/bluegill)", 60, 80, "Warm water. Shallows and cover.")
-    add("Catfish (channel)", 65, 85, "Warm water. Evening and night bites.")
-
-    rank = {"Best": 0, "Fair": 1, "Low": 2}
-    items.sort(key=lambda x: rank[x[1]])
-    return items
-
 # -------------------------------------------------
 # Species tips database (depth-aware) + baits + rigs
 # Depths: allowed values among ["Top", "Mid", "Bottom"]
@@ -648,7 +616,6 @@ PAGE_TITLES = {
     "Best fishing times": "Best Fishing Times",
     "Wind forecast": "Wind Forecast",
     "Trolling depth calculator": "Trolling Depth Calculator",
-    "Water temperature targeting": "Water Temperature Targeting",
     "Species tips": "Species Tips",
     "Speedometer": "Speedometer",
 }
@@ -673,10 +640,6 @@ with st.sidebar:
 
     if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
         st.session_state["tool"] = "Trolling depth calculator"
-        request_sidebar_collapse()
-
-    if st.button("Water temperature targeting", use_container_width=True, key="nav_temp"):
-        st.session_state["tool"] = "Water temperature targeting"
         request_sidebar_collapse()
 
     if st.button("Species tips", use_container_width=True, key="nav_species"):
@@ -889,65 +852,6 @@ elif tool == "Trolling depth calculator":
         "</div>",
         unsafe_allow_html=True,
     )
-
-elif tool == "Water temperature targeting":
-    st.markdown("### Water temperature targeting")
-    st.markdown("<div class='small'>Enter water temperature and get target species suggestions.</div>", unsafe_allow_html=True)
-
-    unit = st.radio("Units", ["F", "C"], horizontal=True)
-
-    if unit == "F":
-        temp_f = st.number_input("Water temp (F)", value=58.0, step=0.5)
-    else:
-        temp_c = st.number_input("Water temp (C)", value=14.5, step=0.5)
-        temp_f = c_to_f(temp_c)
-
-    st.markdown(
-        "<div class='card'><div class='card-title'>Water temperature</div>"
-        "<div class='card-value'>" + str(round(temp_f, 1)) + " F</div></div>",
-        unsafe_allow_html=True,
-    )
-
-    targets = temp_targets(temp_f)
-    best = [x for x in targets if x[1] == "Best"]
-    fair = [x for x in targets if x[1] == "Fair"]
-    low = [x for x in targets if x[1] == "Low"]
-
-    if best:
-        st.markdown("#### Best targets")
-        for name, rating, note in best:
-            st.markdown(
-                "<div class='card'>"
-                "<div class='card-title'>" + name + "</div>"
-                "<div class='card-value'>" + rating + "</div>"
-                "<div class='small' style='margin-top:8px;'>" + note + "</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
-
-    if fair:
-        st.markdown("#### Fair targets")
-        for name, rating, note in fair:
-            st.markdown(
-                "<div class='card'>"
-                "<div class='card-title'>" + name + "</div>"
-                "<div class='card-value'>" + rating + "</div>"
-                "<div class='small' style='margin-top:8px;'>" + note + "</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
-
-    if low and not best:
-        st.markdown("#### Low targets")
-        for name, rating, note in low[:4]:
-            st.markdown(
-                "<div class='card'>"
-                "<div class='card-title'>" + name + "</div>"
-                "<div class='card-value'>" + rating + "</div>"
-                "<div class='small' style='margin-top:8px;'>" + note + "</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
 
 elif tool == "Species tips":
     st.markdown("### Species tips")
