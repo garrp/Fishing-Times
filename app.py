@@ -250,6 +250,70 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
+def inject_wiggle_button(button_text, delay_ms=5000):
+    # Best effort. Streamlit DOM can change. This tries to find a button by its visible text.
+    safe_text = button_text.replace("\\", "\\\\").replace('"', '\\"')
+    components.html(
+        """
+<script>
+(function() {
+  var targetText = "%s";
+  var delay = %d;
+
+  function addWiggle(btn) {
+    try {
+      if (btn.getAttribute("data-wiggle") === "1") return;
+      btn.setAttribute("data-wiggle", "1");
+
+      var styleId = "wiggle-style";
+      if (!document.getElementById(styleId)) {
+        var st = document.createElement("style");
+        st.id = styleId;
+        st.textContent =
+          "@keyframes wiggle{0%%{transform:rotate(0deg)}15%%{transform:rotate(-3deg)}30%%{transform:rotate(3deg)}45%%{transform:rotate(-2deg)}60%%{transform:rotate(2deg)}75%%{transform:rotate(-1deg)}100%%{transform:rotate(0deg)}}" +
+          ".wiggle{animation:wiggle 0.55s ease-in-out 0s 3; transform-origin:center;}";
+        document.head.appendChild(st);
+      }
+
+      btn.classList.remove("wiggle");
+      void btn.offsetWidth;
+      btn.classList.add("wiggle");
+    } catch (e) {}
+  }
+
+  function findButton() {
+    try {
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
+      for (var i = 0; i < buttons.length; i++) {
+        var b = buttons[i];
+        var t = (b.innerText || "").trim();
+        if (t === targetText) return b;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  setTimeout(function() {
+    var btn = findButton();
+    if (btn) { addWiggle(btn); return; }
+
+    var tries = 0;
+    var iv = setInterval(function() {
+      tries += 1;
+      var b = findButton();
+      if (b) {
+        clearInterval(iv);
+        addWiggle(b);
+      }
+      if (tries >= 20) clearInterval(iv);
+    }, 250);
+  }, delay);
+})();
+</script>
+""" % (safe_text, int(delay_ms)),
+        height=0,
+    )
+
 # -------------------------------------------------
 # Species tips database (depth-aware) + baits + rigs
 # Depths: allowed values among ["Top", "Mid", "Bottom"]
@@ -697,6 +761,9 @@ if tool == "Best fishing times":
 
     st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
+    # Wiggle this button after 5 seconds
+    inject_wiggle_button("Display Best Fishing Times", 5000)
+
     if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
         st.session_state["best_go"] = True
         if not use_manual:
@@ -793,6 +860,9 @@ elif tool == "Wind forecast":
 
     st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
+    # Wiggle this button after 5 seconds
+    inject_wiggle_button("Display winds", 5000)
+
     if st.button("Display winds", use_container_width=True, key="go_winds"):
         if not use_manual:
             st.session_state["lat"], st.session_state["lon"] = get_location()
@@ -859,7 +929,14 @@ elif tool == "Species tips":
 
     db = species_tip_db()
     species_list = sorted(list(db.keys()))
-    species = st.selectbox("Species", species_list)
+
+    default_species = "Largemouth bass"
+    try:
+        default_index = species_list.index(default_species)
+    except Exception:
+        default_index = 0
+
+    species = st.selectbox("Species", species_list, index=default_index)
 
     render_species_tips(species, db)
 
