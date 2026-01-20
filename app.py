@@ -966,10 +966,12 @@ else:
     phone_speedometer_widget()
 
 # -------------------------------------------------
-# Footer (no copyright, per request)
-# -------------------------------------------------
+# Footer with copyright (replace your current footer block with this)
+
 st.markdown(
     "<div class='footer'><strong>FishyNW.com</strong><br>"
-    "Independent Northwest fishing tools</div>",
+    "Independent Northwest fishing tools<br>"
+    "&copy; 2026 FishyNW. All rights reserved."
+    "</div>",
     unsafe_allow_html=True,
 )
