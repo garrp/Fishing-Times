@@ -800,7 +800,7 @@ if "best_go" not in st.session_state:
 if "ga_last_tool" not in st.session_state:
     st.session_state["ga_last_tool"] = None
 
-if tool != st.session_state["ga_last_tool"]:
+
     st.session_state["ga_last_tool"] = tool
     ga_send_event("tool_open", {"tool": tool, "app_version": APP_VERSION}, debug=False)
 tool = st.session_state["tool"]
