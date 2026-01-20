@@ -780,6 +780,12 @@ def render_header(title, centered=False):
 # -------------------------------------------------
 # Session defaults
 # -------------------------------------------------
+# -------------------------------------------------
+# Analytics: app_open once per session
+# -------------------------------------------------
+if "ga_open_sent" not in st.session_state:
+    st.session_state["ga_open_sent"] = True
+    ga_send_event("app_open", {"app_version": APP_VERSION}, debug=False)
 if "tool" not in st.session_state:
     st.session_state["tool"] = "Home"
 if "lat" not in st.session_state:
