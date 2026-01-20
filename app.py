@@ -118,6 +118,19 @@ section[data-testid="stSidebar"] { width: 320px; }
   display: inline-block;
 }
 
+/* Consent logo */
+.consent-logo {
+  text-align: center;
+  margin-top: 14px;
+  margin-bottom: 10px;
+}
+.consent-logo img {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  display: inline-block;
+}
+
 /* Cards */
 .card {
   border-radius: 18px;
@@ -202,9 +215,15 @@ def analytics_allowed():
     return st.session_state.get("analytics_consent") == "accepted"
 
 def render_analytics_consent_banner():
+    # Show logo above consent banner
+    st.markdown(
+        "<div class='consent-logo'><img src='" + LOGO_URL + "'></div>",
+        unsafe_allow_html=True,
+    )
+
     st.markdown(
         """
-<div class="card" style="margin-top:8px;">
+<div class="card" style="margin-top:0px;">
   <div style="font-weight:800;font-size:1.05rem;margin-bottom:6px;">Analytics notice</div>
   <div style="opacity:0.88;">
     This app can send anonymous usage analytics to help improve the tools and performance.
@@ -1041,7 +1060,7 @@ elif tool == "Trolling depth calculator":
     st.markdown(
         "<div class='card'><div class='card-title'>Estimated depth</div>"
         "<div class='card-value'>" +
-        (str(depth) if depth is not None else "--") + " ft</div>"
+        (str(depth) if depth is not None else "--")s) + " ft</div>"
         "<div class='small' style='margin-top:8px;'>Heavier line runs shallower. Current and lure drag also affect results.</div>"
         "</div>",
         unsafe_allow_html=True,
