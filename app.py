@@ -68,6 +68,19 @@ section[data-testid="stSidebar"] { width: 320px; }
 }
 .small { opacity: 0.82; font-size: 0.95rem; }
 
+/* Sidebar logo */
+.sb-logo {
+  text-align: center;
+  margin-top: 6px;
+  margin-bottom: 10px;
+}
+.sb-logo img {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  display: inline-block;
+}
+
 /* Cards */
 .card {
   border-radius: 18px;
@@ -527,10 +540,14 @@ PAGE_TITLES = {
 }
 
 # -------------------------------------------------
-# Sidebar navigation
+# Sidebar navigation (with centered logo at top)
 # -------------------------------------------------
 with st.sidebar:
-    st.markdown("### FishyNW Tools")
+    st.markdown(
+        "<div class='sb-logo'><img src='" + LOGO_URL + "'></div>",
+        unsafe_allow_html=True,
+    )
+
     st.caption("Version " + APP_VERSION)
 
     if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
@@ -572,10 +589,12 @@ if tool == "Best fishing times":
     lon = st.session_state.get("lon")
 
     st.markdown("### Location")
-    c0, c00 = st.columns(2)
+
+    # Side-by-side latitude and longitude (always)
+    c0, c1 = st.columns(2)
     with c0:
         lat_in = st.text_input("Latitude (optional)", value=("" if lat is None else str(lat)), key="manual_lat")
-    with c00:
+    with c1:
         lon_in = st.text_input("Longitude (optional)", value=("" if lon is None else str(lon)), key="manual_lon")
 
     use_manual = False
@@ -605,10 +624,10 @@ if tool == "Best fishing times":
         lon = st.session_state.get("lon")
 
         st.markdown("### Date range")
-        c1, c2 = st.columns(2)
-        with c1:
+        d0, d1 = st.columns(2)
+        with d0:
             start_day = st.date_input("Start date", value=date.today(), key="range_start")
-        with c2:
+        with d1:
             end_day = st.date_input("End date", value=date.today(), key="range_end")
 
         st.markdown("<div class='small'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
