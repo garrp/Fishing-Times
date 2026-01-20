@@ -193,6 +193,39 @@ def get_json(url, timeout=10):
     return r.json()
 
 # -------------------------------------------------
+# Analytics consent banner (session-only)
+# -------------------------------------------------
+def analytics_consent_required():
+    return "analytics_consent" not in st.session_state
+
+def analytics_allowed():
+    return st.session_state.get("analytics_consent") == "accepted"
+
+def render_analytics_consent_banner():
+    st.markdown(
+        """
+<div class="card" style="margin-top:8px;">
+  <div style="font-weight:800;font-size:1.05rem;margin-bottom:6px;">Analytics notice</div>
+  <div style="opacity:0.88;">
+    This app can send anonymous usage analytics to help improve the tools and performance.
+    No personal information is collected.
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Accept analytics", use_container_width=True, key="consent_accept"):
+            st.session_state["analytics_consent"] = "accepted"
+            st.rerun()
+    with c2:
+        if st.button("Decline analytics", use_container_width=True, key="consent_decline"):
+            st.session_state["analytics_consent"] = "declined"
+            st.rerun()
+
+# -------------------------------------------------
 # GA4 (server-side) analytics - Streamlit Community Cloud safe
 # Uses GA4 Measurement Protocol
 # -------------------------------------------------
@@ -204,47 +237,9 @@ def ga_get_client_id():
 def ga_send_event(event_name, params=None, debug=False):
     try:
         enabled = bool(st.secrets.get("GA_ENABLED", True))
-        if not enabled:
+        if (not enabled) or (not analytics_allowed()):
             return
 
-# -------------------------------------------------
-# Analytics consent banner
-# -------------------------------------------------
-def analytics_consent_required():
-    return "analytics_consent" not in st.session_state
-
-def analytics_allowed():
-    return st.session_state.get("analytics_consent") == "accepted"
-
-def render_analytics_consent_banner():
-    st.markdown(
-        """
-<div style="
-  border: 1px solid rgba(0,0,0,0.18);
-  border-radius: 14px;
-  padding: 14px;
-  margin-bottom: 14px;
-  background: rgba(0,0,0,0.03);
-">
-  <strong>Analytics notice</strong><br>
-  This app uses anonymous usage analytics to understand which tools are used
-  and improve performance. No personal information is collected.
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Accept analytics", use_container_width=True):
-            st.session_state["analytics_consent"] = "accepted"
-            st.rerun()
-    with c2:
-        if st.button("Decline analytics", use_container_width=True):
-            st.session_state["analytics_consent"] = "declined"
-            st.rerun()
-
-        
         mid = str(st.secrets.get("GA_MEASUREMENT_ID", "")).strip()
         secret = str(st.secrets.get("GA_API_SECRET", "")).strip()
         if not mid or not secret:
@@ -781,7 +776,14 @@ if "best_go" not in st.session_state:
     st.session_state["best_go"] = False
 
 # -------------------------------------------------
-# Analytics: app_open once per session
+# Consent gate (must happen before analytics events)
+# -------------------------------------------------
+if analytics_consent_required():
+    render_analytics_consent_banner()
+    st.stop()
+
+# -------------------------------------------------
+# Analytics: app_open once per session (only after consent)
 # -------------------------------------------------
 if "ga_open_sent" not in st.session_state:
     st.session_state["ga_open_sent"] = True
