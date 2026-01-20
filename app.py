@@ -26,6 +26,45 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
+# Sidebar auto-hide (best effort)
+# Streamlit does not officially expose sidebar control.
+# This clicks the collapse button after a nav click.
+# -------------------------------------------------
+if "collapse_sidebar" not in st.session_state:
+    st.session_state["collapse_sidebar"] = False
+
+def request_sidebar_collapse():
+    st.session_state["collapse_sidebar"] = True
+
+def run_sidebar_collapse_if_needed():
+    if not st.session_state.get("collapse_sidebar"):
+        return
+
+    components.html(
+        """
+<script>
+(function() {
+  function clickCollapse() {
+    try {
+      var btn =
+        parent.document.querySelector('button[title="Collapse sidebar"]') ||
+        parent.document.querySelector('button[aria-label="Collapse sidebar"]') ||
+        parent.document.querySelector('[data-testid="stSidebarCollapseButton"] button') ||
+        parent.document.querySelector('[data-testid="collapsedControl"] button');
+
+      if (btn) { btn.click(); }
+    } catch (e) {}
+  }
+  setTimeout(clickCollapse, 60);
+})();
+</script>
+""",
+        height=0,
+    )
+
+    st.session_state["collapse_sidebar"] = False
+
+# -------------------------------------------------
 # Styles (neutral, no branded colors)
 # -------------------------------------------------
 st.markdown(
@@ -124,6 +163,17 @@ section[data-testid="stSidebar"] { width: 320px; }
 .home-center { text-align: center; margin-top: 18px; }
 .home-center .header-logo { max-width: 100%; margin: 0 auto; }
 .home-center .header-logo img { max-width: 92vw; }
+
+/* Species blocks */
+.spec-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+@media (min-width: 720px) {
+  .spec-grid { grid-template-columns: 1fr 1fr; }
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -236,24 +286,50 @@ def temp_targets(temp_f):
     items.sort(key=lambda x: rank[x[1]])
     return items
 
+# -------------------------------------------------
+# Species tips database (depth-aware) + baits + rigs
+# Depths: allowed values among ["Top", "Mid", "Bottom"]
+# -------------------------------------------------
 def species_tip_db():
     return {
         "Kokanee": {
             "temp_f": (42, 55),
-            "Top": ["Usually not a topwater fish. Focus mid-water columns."],
+            "Depths": ["Mid"],
+            "Baits": [
+                "Small hoochies",
+                "Small spinners (wedding ring)",
+                "Corn with scent (where used/allowed)",
+            ],
+            "Rigs": [
+                "Dodger + leader + hoochie/spinner",
+                "Weights or downrigger to match marks",
+            ],
             "Mid": [
                 "Troll dodger plus small hoochie or spinner behind it.",
                 "Run scent and tune speed until you get a steady rod thump.",
                 "If marks are mid column, match depth with weights or a downrigger."
             ],
-            "Bottom": ["Not a bottom target. If they are deep, still fish just above them."],
             "Quick": [
                 "Speed is everything. Small changes can turn on the bite.",
                 "If you see fish at 35 ft, set gear at about 30 to 33 ft."
             ],
         },
+
         "Rainbow trout": {
             "temp_f": (45, 65),
+            "Depths": ["Top", "Mid", "Bottom"],
+            "Baits": [
+                "Small spoons",
+                "Inline spinners",
+                "Floating minnows",
+                "Worms (where legal)",
+                "PowerBait (where legal)",
+            ],
+            "Rigs": [
+                "Cast and retrieve (spinners/spoons/minnows)",
+                "Trolling with long leads",
+                "Slip sinker bait rig (near bottom)",
+            ],
             "Top": [
                 "When they are up, cast small spinners, spoons, or floating minnows.",
                 "Early morning wind lanes can be strong."
@@ -262,15 +338,29 @@ def species_tip_db():
                 "Troll small spoons or spinners at 1.2 to 1.8 mph.",
                 "Use longer leads if the water is clear."
             ],
-            "Bottom": ["Still fish bait just off bottom near structure or drop-offs."],
+            "Bottom": [
+                "Still fish bait just off bottom near structure or drop-offs.",
+                "If snaggy, lift your bait slightly above bottom."
+            ],
             "Quick": [
                 "If bites stop, change lure color or adjust speed slightly.",
                 "Follow food and temperature changes."
             ],
         },
+
         "Lake trout": {
             "temp_f": (42, 55),
-            "Top": ["Rare topwater. Most action is deep."],
+            "Depths": ["Mid", "Bottom"],
+            "Baits": [
+                "Tube jigs",
+                "Large spoons",
+                "Blade baits",
+                "Swimbaits (deep presentations)",
+            ],
+            "Rigs": [
+                "Vertical jigging (heavy jig head + tube)",
+                "Deep trolling with weights or downrigger",
+            ],
             "Mid": [
                 "If bait is suspended, troll big spoons or tubes through the marks.",
                 "Wide turns often trigger strikes."
@@ -284,28 +374,57 @@ def species_tip_db():
                 "When you find one, stay on that contour."
             ],
         },
+
         "Chinook salmon": {
             "temp_f": (44, 58),
-            "Top": ["Occasional surface activity, but most are deeper in summer."],
+            "Depths": ["Mid", "Bottom"],
+            "Baits": [
+                "Hoochies",
+                "Spoons",
+                "Spinners",
+                "Cut plug / herring style (where used/allowed)",
+            ],
+            "Rigs": [
+                "Flasher + leader + hoochie/spoon",
+                "Weights or downrigger for depth control",
+            ],
             "Mid": [
                 "Troll flasher plus hoochie or spoon.",
                 "Adjust leader length until action looks right.",
                 "Make long straight passes with gentle S turns."
             ],
-            "Bottom": ["If hugging bottom, run just above them to avoid snagging."],
+            "Bottom": [
+                "If they are hugging bottom, run just above them to avoid snagging.",
+                "Use your sonar to stay off bottom and repeat productive passes."
+            ],
             "Quick": [
                 "Speed and depth control are the game.",
                 "Repeat the depth and speed that got your bite."
             ],
         },
+
         "Smallmouth bass": {
             "temp_f": (60, 75),
+            "Depths": ["Top", "Mid", "Bottom"],
+            "Baits": [
+                "Topwater walking baits",
+                "Poppers",
+                "Jerkbaits",
+                "Ned rigs",
+                "Tubes",
+                "Drop shot plastics",
+            ],
+            "Rigs": [
+                "Ned rig (light jig head)",
+                "Drop shot rig",
+                "Tube jig",
+            ],
             "Top": [
                 "Walking baits, poppers early and late.",
                 "Wind on points can make topwater fire."
             ],
             "Mid": [
-                "Swimbaits, jerkbaits, finesse plastics around rocks and shade.",
+                "Jerkbaits and swimbaits around rocks and shade.",
                 "Slow down on cold fronts."
             ],
             "Bottom": [
@@ -317,8 +436,22 @@ def species_tip_db():
                 "After a miss, throw a Ned or drop shot back."
             ],
         },
+
         "Largemouth bass": {
             "temp_f": (65, 80),
+            "Depths": ["Top", "Mid", "Bottom"],
+            "Baits": [
+                "Frogs",
+                "Buzzbaits",
+                "Swim jigs",
+                "Texas rig plastics",
+                "Jigs",
+            ],
+            "Rigs": [
+                "Texas rig",
+                "Swim jig",
+                "Pitching jig",
+            ],
             "Top": [
                 "Frog, buzz bait, popper around weeds and shade lines.",
                 "Target calm pockets in vegetation."
@@ -336,25 +469,48 @@ def species_tip_db():
                 "Dirty water: go louder and bigger."
             ],
         },
+
         "Walleye": {
             "temp_f": (55, 70),
-            "Top": ["Not common topwater, but they can come shallow at night."],
+            "Depths": ["Mid", "Bottom"],
+            "Baits": [
+                "Crankbaits (trolling)",
+                "Jigs with soft plastics",
+                "Jigs with crawler (where used/allowed)",
+                "Blade baits",
+            ],
+            "Rigs": [
+                "Jig and soft plastic (near bottom)",
+                "Bottom bouncer + harness (where used)",
+                "Trolling crankbaits on breaks",
+            ],
             "Mid": [
                 "Troll crankbaits along breaks at dusk and dawn.",
                 "If suspended, match that depth and keep moving."
             ],
             "Bottom": [
-                "Jig and crawler or blade bait near bottom.",
-                "Bottom bouncer with harness on edges."
+                "Jig near bottom on transitions and edges.",
+                "Slow roll a blade bait near bottom when fish are active."
             ],
             "Quick": [
                 "Low light is best: early, late, cloudy.",
                 "Stay on transitions: flats to deep breaks."
             ],
         },
+
         "Perch": {
             "temp_f": (55, 75),
-            "Top": ["Not a true topwater bite. You can catch them shallow though."],
+            "Depths": ["Mid", "Bottom"],
+            "Baits": [
+                "Small jigs",
+                "Worm pieces",
+                "Minnow (where allowed)",
+                "Soft plastics (tiny grubs)",
+            ],
+            "Rigs": [
+                "Small jighead + bait",
+                "Dropper loop with small hook (where used)",
+            ],
             "Mid": [
                 "Small jigs tipped with bait, slowly swum through schools.",
                 "If you find one, there are usually more."
@@ -368,26 +524,70 @@ def species_tip_db():
                 "When you mark a school, hold position and pick them off."
             ],
         },
+
         "Bluegill": {
             "temp_f": (65, 80),
-            "Top": ["Tiny poppers can work in summer near shade and cover."],
-            "Mid": ["Small jigs under a float with slow retrieves and pauses."],
-            "Bottom": ["Tiny jigs and bait near the base of weeds. Downsize when picky."],
-            "Quick": ["Beds: fish edges gently. Light line and small hooks matter."],
+            "Depths": ["Top", "Mid"],
+            "Baits": [
+                "Tiny poppers",
+                "Small jigs",
+                "Worm pieces",
+                "Soft plastics (micro)",
+            ],
+            "Rigs": [
+                "Float + small jig/hook",
+                "Ultralight jighead",
+            ],
+            "Top": [
+                "Tiny poppers can work in summer near shade and cover."
+            ],
+            "Mid": [
+                "Small jigs under a float with slow retrieves and pauses.",
+                "Downsize until you get consistent bites."
+            ],
+            "Quick": [
+                "Beds: fish edges gently. Light line and small hooks matter."
+            ],
         },
+
         "Channel catfish": {
             "temp_f": (65, 85),
-            "Top": ["Not topwater. Focus bottom and current edges."],
-            "Mid": ["Suspend bait only if you know they are cruising. Bottom is usually best."],
+            "Depths": ["Bottom"],
+            "Baits": [
+                "Cut bait",
+                "Worms",
+                "Stink bait",
+                "Chicken liver (where used/allowed)",
+            ],
+            "Rigs": [
+                "Slip sinker / Carolina rig",
+                "Santee Cooper style rig (float the bait slightly)",
+            ],
             "Bottom": [
                 "Soak bait on scent trails: cut bait, worms, stink bait.",
                 "Target holes, outside bends, slow water near current.",
                 "Reset to fresh bait if it goes quiet."
             ],
-            "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
+            "Quick": [
+                "Evening and night are prime.",
+                "Let them load the rod before setting hook."
+            ],
         },
+
         "Trout (general)": {
             "temp_f": (45, 65),
+            "Depths": ["Top", "Mid", "Bottom"],
+            "Baits": [
+                "Spoons",
+                "Inline spinners",
+                "Worms (where legal)",
+                "PowerBait (where legal)",
+            ],
+            "Rigs": [
+                "Cast and retrieve",
+                "Trolling (long leads)",
+                "Slip sinker bait rig",
+            ],
             "Top": ["Cast small spoons and spinners when you see surface activity."],
             "Mid": ["Troll spinners and small spoons at steady speed. Longer leads in clear water."],
             "Bottom": ["Slip sinker and keep bait just off bottom. Slow down if bites are short."],
@@ -402,7 +602,11 @@ def render_species_tips(name, db):
         return
 
     lo, hi = info.get("temp_f", (None, None))
+    depths = info.get("Depths", [])
+    baits = info.get("Baits", [])
+    rigs = info.get("Rigs", [])
 
+    # Top card
     st.markdown(
         "<div class='card'>"
         "<div class='card-title'>Species</div>"
@@ -411,6 +615,7 @@ def render_species_tips(name, db):
         unsafe_allow_html=True,
     )
 
+    # Temp range
     if lo is not None and hi is not None:
         st.markdown(
             "<div class='card'>"
@@ -421,14 +626,46 @@ def render_species_tips(name, db):
             unsafe_allow_html=True,
         )
 
-    def section(title, items):
-        st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
-        st.markdown("<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>", unsafe_allow_html=True)
+    # Baits + rigs cards
+    if baits:
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Popular baits</div>"
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in baits]) + "</ul>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
-    section("Topwater", info.get("Top", ["No tips available."]))
-    section("Mid water", info.get("Mid", ["No tips available."]))
-    section("Bottom", info.get("Bottom", ["No tips available."]))
-    section("Quick tips", info.get("Quick", ["No tips available."]))
+    if rigs:
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Common rigs</div>"
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in rigs]) + "</ul>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    def section(title, key):
+        items = info.get(key, [])
+        if not items:
+            return
+        st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>",
+            unsafe_allow_html=True,
+        )
+
+    # Only render depth sections that are allowed for this fish
+    if "Top" in depths:
+        section("Topwater", "Top")
+    if "Mid" in depths:
+        section("Mid water", "Mid")
+    if "Bottom" in depths:
+        section("Bottom", "Bottom")
+
+    # Quick tips always show if present
+    if info.get("Quick"):
+        section("Quick tips", "Quick")
 
 def phone_speedometer_widget():
     html = """
@@ -554,18 +791,26 @@ with st.sidebar:
         st.session_state["tool"] = "Best fishing times"
         st.session_state["lat"], st.session_state["lon"] = get_location()
         st.session_state["best_go"] = False
+        request_sidebar_collapse()
 
     if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
         st.session_state["tool"] = "Trolling depth calculator"
+        request_sidebar_collapse()
 
     if st.button("Water temperature targeting", use_container_width=True, key="nav_temp"):
         st.session_state["tool"] = "Water temperature targeting"
+        request_sidebar_collapse()
 
     if st.button("Species tips", use_container_width=True, key="nav_species"):
         st.session_state["tool"] = "Species tips"
+        request_sidebar_collapse()
 
     if st.button("Speedometer", use_container_width=True, key="nav_speed"):
         st.session_state["tool"] = "Speedometer"
+        request_sidebar_collapse()
+
+# Run the collapse after the sidebar has rendered
+run_sidebar_collapse_if_needed()
 
 tool = st.session_state["tool"]
 
@@ -703,6 +948,7 @@ elif tool == "Trolling depth calculator":
     with col1:
         line_type = st.radio("Line type", ["Braid", "Fluorocarbon", "Monofilament"])
     with col2:
+        # Default is 12 lb (index=3)
         line_test = st.selectbox("Line test (lb)", [6, 8, 10, 12, 15, 20, 25, 30, 40, 50], index=3)
 
     depth = trolling_depth(speed, weight, line_out, line_type, line_test)
@@ -777,7 +1023,7 @@ elif tool == "Water temperature targeting":
 
 elif tool == "Species tips":
     st.markdown("### Species tips")
-    st.markdown("<div class='small'>Pick a species and get tips plus its best activity temperature range.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Pick a species and get tips plus its best activity temperature range, popular baits, and common rigs.</div>", unsafe_allow_html=True)
 
     db = species_tip_db()
     species_list = sorted(list(db.keys()))
