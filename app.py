@@ -208,7 +208,7 @@ def render_analytics_consent_banner():
   <div style="font-weight:800;font-size:1.05rem;margin-bottom:6px;">Analytics notice</div>
   <div style="opacity:0.88;">
     This app can send anonymous usage analytics to help improve the tools and performance.
-    No personal information is collected.
+    No personal information is collected.  I only goof with usage data.
   </div>
 </div>
 """,
