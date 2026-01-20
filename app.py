@@ -38,6 +38,7 @@ st.markdown(
 }
 section[data-testid="stSidebar"] { width: 320px; }
 
+/* Header */
 .header-row {
   display: flex;
   align-items: center;
@@ -46,11 +47,18 @@ section[data-testid="stSidebar"] { width: 320px; }
   margin-top: 10px;
   margin-bottom: 6px;
 }
+.header-logo {
+  flex: 0 1 auto;
+  max-width: 70%;
+}
 .header-logo img {
-  max-width: 130px;
   width: 100%;
   height: auto;
+  max-width: 260px;
   display: block;
+}
+@media (max-width: 520px) {
+  .header-logo img { max-width: 70vw; }
 }
 .header-title {
   text-align: right;
@@ -58,7 +66,9 @@ section[data-testid="stSidebar"] { width: 320px; }
   font-size: 1.15rem;
   line-height: 1.25rem;
 }
+.small { opacity: 0.82; font-size: 0.95rem; }
 
+/* Cards */
 .card {
   border-radius: 18px;
   padding: 16px;
@@ -68,16 +78,14 @@ section[data-testid="stSidebar"] { width: 320px; }
 }
 .card-title { font-size: 1rem; opacity: 0.92; }
 .card-value { font-size: 1.6rem; font-weight: 800; }
+.compact-card { margin-top: 8px !important; padding: 14px 16px !important; }
 
-.compact-card {
-  margin-top: 8px !important;
-  padding: 14px 16px !important;
-}
-
+/* Lists */
 .tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
 .bul li { margin-bottom: 6px; }
 
+/* Badge */
 .badge {
   display: inline-block;
   padding: 6px 10px;
@@ -89,8 +97,7 @@ section[data-testid="stSidebar"] { width: 320px; }
   background: rgba(0,0,0,0.03);
 }
 
-.small { opacity: 0.82; font-size: 0.95rem; }
-
+/* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
@@ -100,9 +107,10 @@ section[data-testid="stSidebar"] { width: 320px; }
   opacity: 0.90;
 }
 
-/* Home spacing */
-.home-wrap { margin-top: 10px; }
-.home-sub { margin-top: 6px; }
+/* Home */
+.home-center { text-align: center; margin-top: 18px; }
+.home-center .header-logo { max-width: 100%; margin: 0 auto; }
+.home-center .header-logo img { max-width: 92vw; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -402,10 +410,7 @@ def render_species_tips(name, db):
 
     def section(title, items):
         st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
-        st.markdown(
-            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>", unsafe_allow_html=True)
 
     section("Topwater", info.get("Top", ["No tips available."]))
     section("Mid water", info.get("Mid", ["No tips available."]))
@@ -480,6 +485,26 @@ def phone_speedometer_widget():
     """
     components.html(html, height=240)
 
+def render_header(title, centered=False):
+    if centered:
+        st.markdown(
+            "<div class='home-center'>"
+            "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
+            "<div class='small' style='margin-top:10px;'>Use the menu to open Best fishing times.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown(
+        "<div class='header-row'>"
+        "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
+        "<div class='header-title'>" + title + "</div>"
+        "</div>"
+        "<div class='small' style='text-align:left;'>Independent Northwest fishing tools</div>",
+        unsafe_allow_html=True,
+    )
+
 # -------------------------------------------------
 # Session defaults
 # -------------------------------------------------
@@ -528,31 +553,16 @@ with st.sidebar:
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
-# Home page: show logo only, no other content
+# Home page: logo only (fits screen)
 # -------------------------------------------------
 if tool == "Home":
-    st.markdown(
-        "<div class='home-wrap'>"
-        "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
-        "<div class='small home-sub'>Use the menu to open Best fishing times.</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    render_header("", centered=True)
     st.stop()
 
 # -------------------------------------------------
-# Header row (all other pages)
+# Header (all other pages)
 # -------------------------------------------------
-page_title = PAGE_TITLES.get(tool, "")
-
-st.markdown(
-    "<div class='header-row'>"
-    "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
-    "<div class='header-title'>" + page_title + "</div>"
-    "</div>"
-    "<div class='small' style='text-align:left;'>Independent Northwest fishing tools</div>",
-    unsafe_allow_html=True,
-)
+render_header(PAGE_TITLES.get(tool, ""))
 
 # -------------------------------------------------
 # Main content
