@@ -627,8 +627,7 @@ def render_header(title, centered=False):
         "<div class='header-row'>"
         "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
         "<div class='header-title'>" + title + "</div>"
-        "</div>"
-        "<div class='small' style='text-align:left;'>Independent Northwest fishing tools</div>",
+        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -966,11 +965,10 @@ else:
     phone_speedometer_widget()
 
 # -------------------------------------------------
-# Footer with copyright (replace your current footer block with this)
-
+# Footer
+# -------------------------------------------------
 st.markdown(
     "<div class='footer'><strong>FishyNW.com</strong><br>"
-    "Independent fishing tools<br>"
     "&copy; 2026 FishyNW. All rights reserved."
     "</div>",
     unsafe_allow_html=True,
