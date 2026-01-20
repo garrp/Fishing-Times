@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.7.6
+# Version 1.7.7
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7.6"
+APP_VERSION = "1.7.7"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7.6",
+    "User-Agent": "FishyNW-App-1.7.7",
     "Accept": "application/json",
 }
 
@@ -26,19 +26,27 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Branding colors (all buttons light green + cream text)
+# Branding colors
 # -------------------------------------------------
 CREAM_TEXT = "#f6f2e7"
+DARK_TEXT = "#0b0f12"
+
 SIDEBAR_BG = "#071b1f"
 SIDEBAR_BORDER = "rgba(246,242,231,0.14)"
-CARD_BG = "rgba(246,242,231,0.05)"
-CARD_BORDER = "rgba(246,242,231,0.14)"
+
+CARD_BG_DARK = "rgba(246,242,231,0.05)"
+CARD_BORDER_DARK = "rgba(246,242,231,0.14)"
+
+CARD_BG_LIGHT = "rgba(0,0,0,0.04)"
+CARD_BORDER_LIGHT = "rgba(0,0,0,0.12)"
 
 GREEN_BTN = "#6fbf4a"
 GREEN_BTN_HOVER = "#63ad41"
 
 # -------------------------------------------------
 # Styles (ASCII SAFE)
+# - Light mode: dark text on light backgrounds
+# - Dark mode: light/cream text on dark backgrounds
 # -------------------------------------------------
 st.markdown(
     """
@@ -56,7 +64,7 @@ section[data-testid="stSidebar"] > div {
   border-right: 1px solid """ + SIDEBAR_BORDER + """;
 }
 
-/* Sidebar text contrast */
+/* Sidebar text (always light for readability) */
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] p,
 section[data-testid="stSidebar"] span,
@@ -77,7 +85,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   background: """ + GREEN_BTN_HOVER + """ !important;
 }
 
-/* Header row: logo left, title right */
+/* Header row */
 .header-row {
   display: flex;
   align-items: center;
@@ -97,20 +105,16 @@ section[data-testid="stSidebar"] .stButton > button:hover {
   font-weight: 900;
   font-size: 1.15rem;
   line-height: 1.25rem;
-  color: """ + CREAM_TEXT + """;
 }
-.small { color: rgba(246,242,231,0.78); font-size: 0.95rem; }
 
 /* Cards */
 .card {
-  border: 1px solid """ + CARD_BORDER + """;
-  background: """ + CARD_BG + """;
   border-radius: 18px;
   padding: 16px;
   margin-top: 14px;
 }
-.card-title { font-size: 1rem; opacity: 0.88; color: """ + CREAM_TEXT + """; }
-.card-value { font-size: 1.6rem; font-weight: 900; color: """ + CREAM_TEXT + """; }
+.card-title { font-size: 1rem; opacity: 0.90; }
+.card-value { font-size: 1.6rem; font-weight: 900; }
 
 /* Compact cards for fishing times only */
 .compact-card {
@@ -119,45 +123,84 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 }
 
 /* Lists */
-.tip-h { font-weight: 900; margin-top: 10px; color: """ + CREAM_TEXT + """; }
+.tip-h { font-weight: 900; margin-top: 10px; }
 .bul { margin-top: 8px; }
-.bul li { margin-bottom: 6px; color: """ + CREAM_TEXT + """; }
+.bul li { margin-bottom: 6px; }
 
 /* Badge */
 .badge {
   display: inline-block;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid """ + SIDEBAR_BORDER + """;
-  background: rgba(246,242,231,0.05);
   margin: 6px 6px 0 0;
   font-weight: 900;
   font-size: 0.92rem;
-  color: """ + CREAM_TEXT + """;
-}
-
-/* Date range row */
-.range-row {
-  display:flex;
-  gap: 12px;
-  align-items: flex-end;
-}
-.range-note {
-  margin-top: 6px;
-  opacity: 0.82;
-  color: """ + CREAM_TEXT + """;
-  font-size: 0.95rem;
 }
 
 /* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
-  border-top: 1px solid """ + SIDEBAR_BORDER + """;
+  border-top: 1px solid rgba(0,0,0,0.12);
   text-align: center;
   font-size: 0.95rem;
-  opacity: 0.78;
-  color: """ + CREAM_TEXT + """;
+  opacity: 0.88;
+}
+
+/* ---------------------------- */
+/* LIGHT MODE (Streamlit default) */
+/* ---------------------------- */
+.small { color: rgba(0,0,0,0.70); font-size: 0.95rem; }
+
+.header-title { color: """ + DARK_TEXT + """; }
+
+.card {
+  border: 1px solid """ + CARD_BORDER_LIGHT + """;
+  background: """ + CARD_BG_LIGHT + """;
+}
+.card-title { color: """ + DARK_TEXT + """; }
+.card-value { color: """ + DARK_TEXT + """; }
+
+.tip-h { color: """ + DARK_TEXT + """; }
+.bul li { color: """ + DARK_TEXT + """; }
+
+.badge {
+  border: 1px solid """ + CARD_BORDER_LIGHT + """;
+  background: rgba(0,0,0,0.03);
+  color: """ + DARK_TEXT + """;
+}
+
+.footer { color: rgba(0,0,0,0.72); }
+
+/* ---------------------------- */
+/* DARK MODE */
+/* - Targets system/user dark mode preference
+/* ---------------------------- */
+@media (prefers-color-scheme: dark) {
+  .small { color: rgba(246,242,231,0.78); }
+
+  .header-title { color: """ + CREAM_TEXT + """; }
+
+  .card {
+    border: 1px solid """ + CARD_BORDER_DARK + """;
+    background: """ + CARD_BG_DARK + """;
+  }
+  .card-title { color: """ + CREAM_TEXT + """; }
+  .card-value { color: """ + CREAM_TEXT + """; }
+
+  .tip-h { color: """ + CREAM_TEXT + """; }
+  .bul li { color: """ + CREAM_TEXT + """; }
+
+  .badge {
+    border: 1px solid """ + SIDEBAR_BORDER + """;
+    background: rgba(246,242,231,0.05);
+    color: """ + CREAM_TEXT + """;
+  }
+
+  .footer {
+    border-top: 1px solid """ + SIDEBAR_BORDER + """;
+    color: rgba(246,242,231,0.78);
+  }
 }
 </style>
 """,
@@ -552,9 +595,7 @@ PAGE_TITLES = {
 }
 
 # -------------------------------------------------
-# Sidebar navigation (buttons)
-# - Best fishing times button sets tool AND gets current location
-# - Date selection moved to main page and supports multiple days (start/end)
+# Sidebar navigation
 # -------------------------------------------------
 with st.sidebar:
     st.markdown("### FishyNW Tools")
@@ -579,7 +620,7 @@ with st.sidebar:
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
-# Header row (logo left, title right)
+# Header row
 # -------------------------------------------------
 page_title = PAGE_TITLES.get(tool, "FishyNW Tools")
 
@@ -606,14 +647,13 @@ if tool == "Best fishing times":
     with c2:
         end_day = st.date_input("End date", value=date.today(), key="range_end")
 
-    st.markdown("<div class='range-note'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
 
     if end_day < start_day:
         st.warning("End date must be the same as or after start date.")
     elif lat is None or lon is None:
         st.info("Tap 'Best fishing times' in the menu to use your current location.")
     else:
-        # Build day list (limit to 14 days to keep UI fast and clean)
         day_list = []
         cur = start_day
         while cur <= end_day:
