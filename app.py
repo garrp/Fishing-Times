@@ -200,9 +200,7 @@ div.stButton > button:disabled {
 }
 
 /* Home menu layout */
-.home-menu {
-  margin-top: 16px;
-}
+.home-menu { margin-top: 16px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -215,6 +213,17 @@ def get_json(url, timeout=10):
     r = requests.get(url, headers=HEADERS, timeout=timeout)
     r.raise_for_status()
     return r.json()
+
+def normalize_place_query(s):
+    # Make matching easier for users:
+    # - trim
+    # - collapse extra spaces
+    # - keep punctuation (commas help disambiguate)
+    # - DO NOT force case on the wire; server is already case-insensitive,
+    #   but we normalize for consistency and caching.
+    s = "" if s is None else str(s)
+    s = " ".join(s.strip().split())
+    return s
 
 # -------------------------------------------------
 # Analytics consent banner (session-only)
@@ -309,45 +318,51 @@ def get_location():
     except Exception:
         return None, None
 
-def geocode_place_name(place_name):
+def geocode_search(place_name, count=8):
     # Open-Meteo geocoding (no key)
-    # https://geocoding-api.open-meteo.com/v1/search?name=Spokane&count=1&language=en&format=json
+    # Server-side matching is case-insensitive, but we normalize spaces/punctuation for users.
     try:
-        q = str(place_name).strip()
+        q = normalize_place_query(place_name)
         if not q:
-            return None, None, None
+            return []
 
         url = (
             "https://geocoding-api.open-meteo.com/v1/search"
             "?name=" + requests.utils.quote(q) +
-            "&count=1&language=en&format=json"
+            "&count=" + str(int(count)) + "&language=en&format=json"
         )
         data = get_json(url, timeout=8)
         results = data.get("results") or []
-        if not results:
-            return None, None, None
 
-        r0 = results[0]
-        lat = r0.get("latitude")
-        lon = r0.get("longitude")
+        out = []
+        for r in results:
+            lat = r.get("latitude")
+            lon = r.get("longitude")
+            if lat is None or lon is None:
+                continue
 
-        name = str(r0.get("name") or q)
-        admin1 = str(r0.get("admin1") or "").strip()
-        country = str(r0.get("country") or "").strip()
+            name = str(r.get("name") or q)
+            admin1 = str(r.get("admin1") or "").strip()
+            country = str(r.get("country") or "").strip()
 
-        parts = [name]
-        if admin1:
-            parts.append(admin1)
-        if country:
-            parts.append(country)
-        display = ", ".join(parts)
+            parts = [name]
+            if admin1:
+                parts.append(admin1)
+            if country:
+                parts.append(country)
 
-        if lat is None or lon is None:
-            return None, None, None
+            display = ", ".join(parts)
+            out.append(
+                {
+                    "label": display,
+                    "lat": float(lat),
+                    "lon": float(lon),
+                }
+            )
 
-        return float(lat), float(lon), display
+        return out
     except Exception:
-        return None, None, None
+        return []
 
 def get_sun_times(lat, lon, day_iso):
     url = (
@@ -848,11 +863,19 @@ if "best_go" not in st.session_state:
 
 if "best_place" not in st.session_state:
     st.session_state["best_place"] = ""
+if "best_place_matches" not in st.session_state:
+    st.session_state["best_place_matches"] = []
+if "best_place_choice" not in st.session_state:
+    st.session_state["best_place_choice"] = ""
 if "best_place_display" not in st.session_state:
     st.session_state["best_place_display"] = ""
 
 if "wind_place" not in st.session_state:
     st.session_state["wind_place"] = ""
+if "wind_place_matches" not in st.session_state:
+    st.session_state["wind_place_matches"] = []
+if "wind_place_choice" not in st.session_state:
+    st.session_state["wind_place_choice"] = ""
 if "wind_place_display" not in st.session_state:
     st.session_state["wind_place_display"] = ""
 
@@ -996,15 +1019,38 @@ render_header(PAGE_TITLES.get(tool, ""))
 # -------------------------------------------------
 if tool == "Best fishing times":
     st.markdown("### Location")
+
     place = st.text_input(
         "Place name (optional)",
         value=st.session_state.get("best_place", ""),
-        placeholder="Example: Hauser Lake, Coeur d'Alene, Spokane",
+        placeholder="Example: Spokane, WA   or   99201   or   Hauser Lake, Idaho",
         key="best_place_input",
     )
     st.session_state["best_place"] = place
 
-    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Not case sensitive. Leave blank to use your current location.</div>", unsafe_allow_html=True)
+
+    # Search matches button (optional but makes it MUCH easier)
+    cA, cB = st.columns(2)
+    with cA:
+        if st.button("Search place", use_container_width=True, key="best_search_place"):
+            q = normalize_place_query(place)
+            matches = geocode_search(q, count=10) if q else []
+            st.session_state["best_place_matches"] = matches
+            st.session_state["best_place_choice"] = matches[0]["label"] if matches else ""
+            st.session_state["best_place_display"] = ""
+    with cB:
+        if st.button("Use my current location", use_container_width=True, key="best_use_current"):
+            st.session_state["best_place_matches"] = []
+            st.session_state["best_place_choice"] = ""
+            st.session_state["best_place_display"] = ""
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+
+    matches = st.session_state.get("best_place_matches") or []
+    if matches:
+        labels = [m["label"] for m in matches]
+        choice = st.selectbox("Choose the correct match", labels, index=0, key="best_place_choice_select")
+        st.session_state["best_place_choice"] = choice
 
     inject_wiggle_button("Display Best Fishing Times", 5000)
 
@@ -1016,14 +1062,30 @@ if tool == "Best fishing times":
         )
         st.session_state["best_go"] = True
 
-        if place.strip():
-            lat, lon, display = geocode_place_name(place.strip())
-            if lat is None or lon is None:
+        q = normalize_place_query(place)
+        if q:
+            # If user already searched and chose, honor that.
+            chosen_label = st.session_state.get("best_place_choice", "")
+            chosen = None
+            for m in matches:
+                if m["label"] == chosen_label:
+                    chosen = m
+                    break
+
+            # If no chosen match, try a fresh search.
+            if chosen is None:
+                matches2 = geocode_search(q, count=10)
+                st.session_state["best_place_matches"] = matches2
+                matches = matches2
+                chosen = matches2[0] if matches2 else None
+                st.session_state["best_place_choice"] = chosen["label"] if chosen else ""
+
+            if chosen:
+                st.session_state["lat"], st.session_state["lon"] = chosen["lat"], chosen["lon"]
+                st.session_state["best_place_display"] = chosen["label"]
+            else:
                 st.session_state["lat"], st.session_state["lon"] = None, None
                 st.session_state["best_place_display"] = ""
-            else:
-                st.session_state["lat"], st.session_state["lon"] = lat, lon
-                st.session_state["best_place_display"] = display or place.strip()
         else:
             st.session_state["lat"], st.session_state["lon"] = get_location()
             st.session_state["best_place_display"] = ""
@@ -1048,10 +1110,10 @@ if tool == "Best fishing times":
         if end_day < start_day:
             st.warning("End date must be the same as or after start date.")
         elif lat is None or lon is None:
-            if place.strip():
-                st.warning("Could not find that place. Try a different name (example: city and state).")
+            if normalize_place_query(place):
+                st.warning("Could not find that place. Try City, State or a ZIP code.")
             else:
-                st.warning("Could not detect your location. Try entering a place name.")
+                st.warning("Could not detect your location. Try entering a place name or ZIP code.")
         else:
             day_list = []
             cur = start_day
@@ -1100,15 +1162,37 @@ elif tool == "Wind forecast":
     st.markdown("<div class='small'>Current and future hourly winds from your location or a place name.</div>", unsafe_allow_html=True)
 
     st.markdown("### Location")
+
     place = st.text_input(
         "Place name (optional)",
         value=st.session_state.get("wind_place", ""),
-        placeholder="Example: Hayden Lake, Spokane, Coeur d'Alene",
+        placeholder="Example: Los Angeles, CA   or   90001   or   Hayden Lake, Idaho",
         key="wind_place_input",
     )
     st.session_state["wind_place"] = place
 
-    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Not case sensitive. Leave blank to use your current location.</div>", unsafe_allow_html=True)
+
+    cA, cB = st.columns(2)
+    with cA:
+        if st.button("Search place", use_container_width=True, key="wind_search_place"):
+            q = normalize_place_query(place)
+            matches = geocode_search(q, count=10) if q else []
+            st.session_state["wind_place_matches"] = matches
+            st.session_state["wind_place_choice"] = matches[0]["label"] if matches else ""
+            st.session_state["wind_place_display"] = ""
+    with cB:
+        if st.button("Use my current location", use_container_width=True, key="wind_use_current"):
+            st.session_state["wind_place_matches"] = []
+            st.session_state["wind_place_choice"] = ""
+            st.session_state["wind_place_display"] = ""
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+
+    matches = st.session_state.get("wind_place_matches") or []
+    if matches:
+        labels = [m["label"] for m in matches]
+        choice = st.selectbox("Choose the correct match", labels, index=0, key="wind_place_choice_select")
+        st.session_state["wind_place_choice"] = choice
 
     inject_wiggle_button("Display winds", 5000)
 
@@ -1119,14 +1203,28 @@ elif tool == "Wind forecast":
             debug=False,
         )
 
-        if place.strip():
-            lat, lon, display = geocode_place_name(place.strip())
-            if lat is None or lon is None:
+        q = normalize_place_query(place)
+        if q:
+            chosen_label = st.session_state.get("wind_place_choice", "")
+            chosen = None
+            for m in matches:
+                if m["label"] == chosen_label:
+                    chosen = m
+                    break
+
+            if chosen is None:
+                matches2 = geocode_search(q, count=10)
+                st.session_state["wind_place_matches"] = matches2
+                matches = matches2
+                chosen = matches2[0] if matches2 else None
+                st.session_state["wind_place_choice"] = chosen["label"] if chosen else ""
+
+            if chosen:
+                st.session_state["lat"], st.session_state["lon"] = chosen["lat"], chosen["lon"]
+                st.session_state["wind_place_display"] = chosen["label"]
+            else:
                 st.session_state["lat"], st.session_state["lon"] = None, None
                 st.session_state["wind_place_display"] = ""
-            else:
-                st.session_state["lat"], st.session_state["lon"] = lat, lon
-                st.session_state["wind_place_display"] = display or place.strip()
         else:
             st.session_state["lat"], st.session_state["lon"] = get_location()
             st.session_state["wind_place_display"] = ""
@@ -1139,10 +1237,10 @@ elif tool == "Wind forecast":
         st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
 
     if lat is None or lon is None:
-        if place.strip():
-            st.warning("Could not find that place. Try a different name (example: city and state).")
+        if normalize_place_query(place):
+            st.warning("Could not find that place. Try City, State or a ZIP code.")
         else:
-            st.info("Tap Display winds. If location fails, enter a place name.")
+            st.info("Tap Display winds. If location fails, enter a place name or ZIP code.")
     else:
         wind = get_wind_hours(lat, lon)
         now_local = datetime.now()
