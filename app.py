@@ -1,6 +1,6 @@
 # app.py
-# FishyNW.com - Fishing Tools
-# Version 1.7.8
+# FishyNW.com - Fishing Tools (Mobile)
+# Version 2.0.0
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,17 +8,17 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.7.8"
+APP_VERSION = "2.0.0"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.7.8",
+    "User-Agent": "FishyNW-App-2.0.0",
     "Accept": "application/json",
 }
 
 # -------------------------------------------------
-# Page config
+# Page config (NO SIDEBAR)
 # -------------------------------------------------
 st.set_page_config(
     page_title="FishyNW.com | Fishing Tools",
@@ -27,57 +27,53 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# Session defaults (MUST be before sidebar CSS logic)
+# Session defaults
 # -------------------------------------------------
 if "tool" not in st.session_state:
-    st.session_state["tool"] = "Home"
-
-# nav_mode:
-# - "home": hide sidebar entirely, show buttons on landing page
-# - "sidebar": show sidebar navigation
-if "nav_mode" not in st.session_state:
-    st.session_state["nav_mode"] = "home"
+    st.session_state["tool"] = "Times"
 
 if "lat" not in st.session_state:
     st.session_state["lat"] = None
 if "lon" not in st.session_state:
     st.session_state["lon"] = None
-if "best_go" not in st.session_state:
-    st.session_state["best_go"] = False
 
-if "best_place" not in st.session_state:
-    st.session_state["best_place"] = ""
-if "best_place_matches" not in st.session_state:
-    st.session_state["best_place_matches"] = []
-if "best_place_choice" not in st.session_state:
-    st.session_state["best_place_choice"] = ""
-if "best_place_display" not in st.session_state:
-    st.session_state["best_place_display"] = ""
+# Times tool state
+if "times_place" not in st.session_state:
+    st.session_state["times_place"] = ""
+if "times_matches" not in st.session_state:
+    st.session_state["times_matches"] = []
+if "times_choice" not in st.session_state:
+    st.session_state["times_choice"] = ""
+if "times_display" not in st.session_state:
+    st.session_state["times_display"] = ""
 
+# Wind tool state
 if "wind_place" not in st.session_state:
     st.session_state["wind_place"] = ""
-if "wind_place_matches" not in st.session_state:
-    st.session_state["wind_place_matches"] = []
-if "wind_place_choice" not in st.session_state:
-    st.session_state["wind_place_choice"] = ""
-if "wind_place_display" not in st.session_state:
-    st.session_state["wind_place_display"] = ""
+if "wind_matches" not in st.session_state:
+    st.session_state["wind_matches"] = []
+if "wind_choice" not in st.session_state:
+    st.session_state["wind_choice"] = ""
+if "wind_display" not in st.session_state:
+    st.session_state["wind_display"] = ""
 
 # -------------------------------------------------
-# Sidebar show/hide (RELIABLE - multiple selectors)
+# Styles (hide sidebar + mobile app vibe)
 # -------------------------------------------------
-def apply_sidebar_visibility():
-    hide = (st.session_state.get("nav_mode", "home") == "home")
-
-    if hide:
-        st.markdown(
-            """
+st.markdown(
+    """
 <style>
-/* Hide sidebar across Streamlit DOM variants */
+/* Always hide sidebar */
 section[data-testid="stSidebar"],
 aside[data-testid="stSidebar"],
 div[data-testid="stSidebar"],
-[data-testid="stSidebar"] {
+[data-testid="stSidebar"],
+div[data-testid="collapsedControl"],
+div[data-testid="stSidebarCollapsedControl"],
+button[data-testid="collapsedControl"],
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+.stSidebar {
   display: none !important;
   visibility: hidden !important;
   width: 0 !important;
@@ -85,164 +81,111 @@ div[data-testid="stSidebar"],
   max-width: 0 !important;
 }
 
-/* Hide the little expand/collapse control(s) across variants */
-div[data-testid="collapsedControl"],
-div[data-testid="stSidebarCollapsedControl"],
-button[data-testid="collapsedControl"],
-[data-testid="collapsedControl"],
-[data-testid="stSidebarCollapsedControl"] {
-  display: none !important;
-  visibility: hidden !important;
-}
-
-/* Some builds wrap the sidebar in a "stSidebar" container */
-.stSidebar {
-  display: none !important;
-  width: 0 !important;
-}
-
-/* Ensure main content uses full width */
-.block-container { max-width: 720px; }
-</style>
-""",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            """
-<style>
-/* Ensure sidebar is visible in tool mode */
-section[data-testid="stSidebar"],
-aside[data-testid="stSidebar"],
-div[data-testid="stSidebar"],
-[data-testid="stSidebar"] {
-  display: block !important;
-  visibility: visible !important;
-  width: 320px !important;
-  min-width: 320px !important;
-  max-width: 320px !important;
-}
-</style>
-""",
-            unsafe_allow_html=True,
-        )
-
-# IMPORTANT: apply visibility CSS early on every run
-apply_sidebar_visibility()
-
-# -------------------------------------------------
-# Styles (neutral + light green buttons with contrast)
-# -------------------------------------------------
-st.markdown(
-    """
-<style>
+/* Main layout */
 .block-container {
-  padding-top: 1.15rem;
-  padding-bottom: 3.25rem;
-  max-width: 720px;
+  padding-top: 0.95rem;
+  padding-bottom: 5.25rem; /* room for bottom nav */
+  max-width: 760px;
 }
 
 /* Header */
-.header-row {
+.app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-  margin-bottom: 6px;
-}
-.header-logo {
-  flex: 0 1 auto;
-  max-width: 70%;
-}
-.header-logo img {
-  width: 100%;
-  height: auto;
-  max-width: 260px;
-  display: block;
-}
-@media (max-width: 520px) {
-  .header-logo img { max-width: 70vw; }
-}
-.header-title {
-  text-align: right;
-  font-weight: 800;
-  font-size: 1.15rem;
-  line-height: 1.25rem;
-}
-.small { opacity: 0.82; font-size: 0.95rem; }
-
-/* Sidebar logo */
-.sb-logo {
-  text-align: center;
+  gap: 10px;
   margin-top: 6px;
   margin-bottom: 10px;
 }
-.sb-logo img {
+.app-logo img {
   width: 100%;
-  max-width: 220px;
   height: auto;
-  display: inline-block;
+  max-width: 230px;
+  display: block;
 }
+@media (max-width: 520px) {
+  .app-logo img { max-width: 64vw; }
+}
+.app-meta {
+  text-align: right;
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1.2rem;
+}
+.small { opacity: 0.85; font-size: 0.95rem; }
 
 /* Cards */
 .card {
   border-radius: 18px;
   padding: 16px;
-  margin-top: 14px;
+  margin-top: 12px;
   border: 1px solid rgba(0,0,0,0.14);
   background: rgba(0,0,0,0.03);
 }
-.card-title { font-size: 1rem; opacity: 0.92; }
-.card-value { font-size: 1.6rem; font-weight: 800; }
+.card-title { font-size: 0.98rem; opacity: 0.92; }
+.card-value { font-size: 1.55rem; font-weight: 800; }
 .compact-card { margin-top: 8px !important; padding: 14px 16px !important; }
-
-/* Footer */
-.footer {
-  margin-top: 34px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(0,0,0,0.14);
-  text-align: center;
-  font-size: 0.95rem;
-  opacity: 0.90;
-}
-
-/* Home */
-.home-center { text-align: center; margin-top: 18px; }
-.home-center .header-logo { max-width: 100%; margin: 0 auto; }
-.home-center .header-logo img { max-width: 92vw; }
 
 /* Lists */
 .tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
 .bul li { margin-bottom: 6px; }
 
-/* Global button styling (light green, high contrast) */
+/* Buttons: light green, high contrast */
 button[kind="primary"],
-button,
-div.stButton > button {
+div.stButton > button,
+button {
   background-color: #8fd19e !important;
   color: #0b2e13 !important;
   border: 1px solid #6fbf87 !important;
-  font-weight: 700 !important;
-  border-radius: 10px !important;
+  font-weight: 800 !important;
+  border-radius: 12px !important;
+  padding: 0.65rem 0.9rem !important;
 }
-button[kind="primary"]:hover,
-button:hover,
-div.stButton > button:hover {
+div.stButton > button:hover,
+button:hover {
   background-color: #7cc78f !important;
   color: #08210f !important;
 }
-button:active,
-div.stButton > button:active {
-  background-color: #6bbb83 !important;
-  color: #04160a !important;
-}
-button:disabled,
-div.stButton > button:disabled {
+div.stButton > button:disabled,
+button:disabled {
   background-color: #cfe8d6 !important;
   color: #6b6b6b !important;
   border-color: #b6d6c1 !important;
+}
+
+/* Bottom nav bar (fixed) */
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: rgba(255,255,255,0.96);
+  border-top: 1px solid rgba(0,0,0,0.14);
+  padding: 10px 10px;
+}
+@media (prefers-color-scheme: dark) {
+  .bottom-nav {
+    background: rgba(18,18,18,0.96);
+  }
+}
+.nav-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.nav-hint {
+  text-align: center;
+  font-size: 0.9rem;
+  opacity: 0.78;
+  margin-top: 2px;
+}
+
+/* Make inputs feel bigger on mobile */
+div[data-baseweb="input"] input,
+div[data-baseweb="textarea"] textarea {
+  padding-top: 0.6rem !important;
+  padding-bottom: 0.6rem !important;
 }
 </style>
 """,
@@ -266,6 +209,7 @@ def normalize_place_query(s):
 # Location / Geocoding
 # -------------------------------------------------
 def get_location():
+    # Best-effort IP geolocation (works without browser GPS permission)
     try:
         data = get_json("https://ipinfo.io/json", 6)
         loc = data.get("loc")
@@ -387,69 +331,6 @@ def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
 
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
-
-def inject_wiggle_button(button_text, delay_ms=5000):
-    safe_text = button_text.replace("\\", "\\\\").replace('"', '\\"')
-    components.html(
-        """
-<script>
-(function() {
-  var targetText = "%s";
-  var delay = %d;
-
-  function addWiggle(btn) {
-    try {
-      if (btn.getAttribute("data-wiggle") === "1") return;
-      btn.setAttribute("data-wiggle", "1");
-
-      var styleId = "wiggle-style";
-      if (!document.getElementById(styleId)) {
-        var st = document.createElement("style");
-        st.id = styleId;
-        st.textContent =
-          "@keyframes wiggle{0%%{transform:rotate(0deg)}15%%{transform:rotate(-3deg)}30%%{transform:rotate(3deg)}45%%{transform:rotate(-2deg)}60%%{transform:rotate(2deg)}75%%{transform:rotate(-1deg)}100%%{transform:rotate(0deg)}}" +
-          ".wiggle{animation:wiggle 0.55s ease-in-out 0s 3; transform-origin:center;}";
-        document.head.appendChild(st);
-      }
-
-      btn.classList.remove("wiggle");
-      void btn.offsetWidth;
-      btn.classList.add("wiggle");
-    } catch (e) {}
-  }
-
-  function findButton() {
-    try {
-      var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
-      for (var i = 0; i < buttons.length; i++) {
-        var b = buttons[i];
-        var t = (b.innerText || "").trim();
-        if (t === targetText) return b;
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  setTimeout(function() {
-    var btn = findButton();
-    if (btn) { addWiggle(btn); return; }
-
-    var tries = 0;
-    var iv = setInterval(function() {
-      tries += 1;
-      var b = findButton();
-      if (b) {
-        clearInterval(iv);
-        addWiggle(b);
-      }
-      if (tries >= 20) clearInterval(iv);
-    }, 250);
-  }, delay);
-})();
-</script>
-""" % (safe_text, int(delay_ms)),
-        height=0,
-    )
 
 # -------------------------------------------------
 # Species tips
@@ -712,6 +593,9 @@ def render_species_tips(name, db):
     if info.get("Quick"):
         section("Quick tips", "Quick")
 
+# -------------------------------------------------
+# Speedometer widget (phone GPS)
+# -------------------------------------------------
 def phone_speedometer_widget():
     html = """
     <div id="wrap" style="padding:12px;border:1px solid rgba(0,0,0,0.14);border-radius:18px;background:rgba(0,0,0,0.03);">
@@ -780,329 +664,232 @@ def phone_speedometer_widget():
     """
     components.html(html, height=240)
 
-def render_header(title, centered=False):
-    if centered:
-        st.markdown(
-            "<div class='home-center'>"
-            "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
-            "<div class='small' style='margin-top:10px;'>Pick a tool below to get started.</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        return
+# -------------------------------------------------
+# UI: header + navigation (no sidebar, no redundancy)
+# -------------------------------------------------
+TOOL_LABELS = ["Times", "Wind", "Depth", "Tips", "Speed"]
 
+def set_tool(name):
+    st.session_state["tool"] = name
+
+def render_header():
+    title_map = {
+        "Times": "Best Fishing Times",
+        "Wind": "Wind Forecast",
+        "Depth": "Trolling Depth",
+        "Tips": "Species Tips",
+        "Speed": "Speedometer",
+    }
+    t = title_map.get(st.session_state["tool"], "")
     st.markdown(
-        "<div class='header-row'>"
-        "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
-        "<div class='header-title'>" + title + "</div>"
+        "<div class='app-header'>"
+        "<div class='app-logo'><img src='" + LOGO_URL + "'></div>"
+        "<div class='app-meta'>" + t + "<div class='small'>v " + APP_VERSION + "</div></div>"
         "</div>",
         unsafe_allow_html=True,
     )
 
-PAGE_TITLES = {
-    "Home": "",
-    "Best fishing times": "Best Fishing Times",
-    "Wind forecast": "Wind Forecast",
-    "Trolling depth calculator": "Trolling Depth Calculator",
-    "Species tips": "Species Tips",
-    "Speedometer": "Speedometer",
-}
+def render_top_nav():
+    c1, c2, c3, c4, c5 = st.columns(5)
+    cols = [c1, c2, c3, c4, c5]
+    for i in range(len(TOOL_LABELS)):
+        with cols[i]:
+            if st.button(TOOL_LABELS[i], use_container_width=True, key="topnav_" + TOOL_LABELS[i]):
+                set_tool(TOOL_LABELS[i])
+                st.rerun()
 
-def nav_to(tool_name):
-    st.session_state["tool"] = tool_name
-    if tool_name == "Home":
-        st.session_state["nav_mode"] = "home"
-    else:
-        st.session_state["nav_mode"] = "sidebar"
-        if tool_name == "Best fishing times":
-            st.session_state["best_go"] = False
+def render_bottom_nav():
+    # Fixed bar with real Streamlit buttons layered in a container
+    st.markdown("<div class='bottom-nav'><div class='nav-wrap'>", unsafe_allow_html=True)
+    c1, c2, c3, c4, c5 = st.columns(5)
+    cols = [c1, c2, c3, c4, c5]
+    for i in range(len(TOOL_LABELS)):
+        with cols[i]:
+            if st.button(TOOL_LABELS[i], use_container_width=True, key="botnav_" + TOOL_LABELS[i]):
+                set_tool(TOOL_LABELS[i])
+                st.rerun()
+    st.markdown("<div class='nav-hint'>Tap a tool. No sidebar.</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+# -------------------------------------------------
+# App shell
+# -------------------------------------------------
+render_header()
+render_top_nav()
+st.markdown("<div class='small'>Tip: Enter a place name or ZIP. Leave blank to use your current location.</div>", unsafe_allow_html=True)
+st.markdown("")
 
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
-# Sidebar navigation (only when nav_mode == sidebar)
+# TIMES (single Go button, no redundant search buttons)
 # -------------------------------------------------
-if st.session_state.get("nav_mode") == "sidebar":
-    with st.sidebar:
-        st.markdown("<div class='sb-logo'><img src='" + LOGO_URL + "'></div>", unsafe_allow_html=True)
-        st.caption("Version " + APP_VERSION)
+if tool == "Times":
+    st.markdown("### Location and dates")
 
-        if st.button("Home", use_container_width=True, key="nav_home"):
-            nav_to("Home")
-            st.rerun()
+    with st.form("times_form", clear_on_submit=False):
+        place = st.text_input(
+            "Place name (optional)",
+            value=st.session_state.get("times_place", ""),
+            placeholder="Example: Spokane, WA   or   99201   or   Hauser Lake, Idaho",
+        )
+        st.session_state["times_place"] = place
 
-        if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
-            nav_to("Best fishing times")
-            st.rerun()
-
-        if st.button("Wind forecast", use_container_width=True, key="nav_wind"):
-            nav_to("Wind forecast")
-            st.rerun()
-
-        if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
-            nav_to("Trolling depth calculator")
-            st.rerun()
-
-        if st.button("Species tips", use_container_width=True, key="nav_species"):
-            nav_to("Species tips")
-            st.rerun()
-
-        if st.button("Speedometer", use_container_width=True, key="nav_speed"):
-            nav_to("Speedometer")
-            st.rerun()
-
-# -------------------------------------------------
-# Home page (landing page with all buttons)
-# -------------------------------------------------
-if tool == "Home":
-    render_header("", centered=True)
-
-    r1 = st.columns(2)
-    with r1[0]:
-        if st.button("Best fishing times", use_container_width=True, key="home_best_times"):
-            nav_to("Best fishing times")
-            st.rerun()
-    with r1[1]:
-        if st.button("Wind forecast", use_container_width=True, key="home_wind"):
-            nav_to("Wind forecast")
-            st.rerun()
-
-    r2 = st.columns(2)
-    with r2[0]:
-        if st.button("Trolling depth calculator", use_container_width=True, key="home_depth"):
-            nav_to("Trolling depth calculator")
-            st.rerun()
-    with r2[1]:
-        if st.button("Species tips", use_container_width=True, key="home_species"):
-            nav_to("Species tips")
-            st.rerun()
-
-    r3 = st.columns(1)
-    with r3[0]:
-        if st.button("Speedometer", use_container_width=True, key="home_speed"):
-            nav_to("Speedometer")
-            st.rerun()
-
-    st.stop()
-
-# -------------------------------------------------
-# Header (all other pages)
-# -------------------------------------------------
-render_header(PAGE_TITLES.get(tool, ""))
-
-# -------------------------------------------------
-# Main content
-# -------------------------------------------------
-if tool == "Best fishing times":
-    st.markdown("### Location")
-
-    place = st.text_input(
-        "Place name (optional)",
-        value=st.session_state.get("best_place", ""),
-        placeholder="Example: Spokane, WA   or   99201   or   Hauser Lake, Idaho",
-        key="best_place_input",
-    )
-    st.session_state["best_place"] = place
-
-    st.markdown("<div class='small'>Not case sensitive. Leave blank to use your current location.</div>", unsafe_allow_html=True)
-
-    cA, cB = st.columns(2)
-    with cA:
-        if st.button("Search place", use_container_width=True, key="best_search_place"):
-            q = normalize_place_query(place)
-            matches = geocode_search(q, count=10) if q else []
-            st.session_state["best_place_matches"] = matches
-            st.session_state["best_place_choice"] = matches[0]["label"] if matches else ""
-            st.session_state["best_place_display"] = ""
-    with cB:
-        if st.button("Use my current location", use_container_width=True, key="best_use_current"):
-            st.session_state["best_place_matches"] = []
-            st.session_state["best_place_choice"] = ""
-            st.session_state["best_place_display"] = ""
-            st.session_state["lat"], st.session_state["lon"] = get_location()
-
-    matches = st.session_state.get("best_place_matches") or []
-    if matches:
-        labels = [m["label"] for m in matches]
-        choice = st.selectbox("Choose the correct match", labels, index=0, key="best_place_choice_select")
-        st.session_state["best_place_choice"] = choice
-
-    inject_wiggle_button("Display Best Fishing Times", 5000)
-
-    if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
-        st.session_state["best_go"] = True
-
-        q = normalize_place_query(place)
-        if q:
-            chosen_label = st.session_state.get("best_place_choice", "")
-            chosen = None
-            for m in matches:
-                if m["label"] == chosen_label:
-                    chosen = m
-                    break
-
-            if chosen is None:
-                matches2 = geocode_search(q, count=10)
-                st.session_state["best_place_matches"] = matches2
-                matches = matches2
-                chosen = matches2[0] if matches2 else None
-                st.session_state["best_place_choice"] = chosen["label"] if chosen else ""
-
-            if chosen:
-                st.session_state["lat"], st.session_state["lon"] = chosen["lat"], chosen["lon"]
-                st.session_state["best_place_display"] = chosen["label"]
-            else:
-                st.session_state["lat"], st.session_state["lon"] = None, None
-                st.session_state["best_place_display"] = ""
-        else:
-            st.session_state["lat"], st.session_state["lon"] = get_location()
-            st.session_state["best_place_display"] = ""
-
-    if st.session_state.get("best_go"):
-        lat = st.session_state.get("lat")
-        lon = st.session_state.get("lon")
-        display_place = st.session_state.get("best_place_display", "")
-
-        if display_place:
-            st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
-
-        st.markdown("### Date range")
         d0, d1 = st.columns(2)
         with d0:
-            start_day = st.date_input("Start date", value=date.today(), key="range_start")
+            start_day = st.date_input("Start date", value=date.today(), key="times_start")
         with d1:
-            end_day = st.date_input("End date", value=date.today(), key="range_end")
+            end_day = st.date_input("End date", value=date.today(), key="times_end")
 
-        st.markdown("<div class='small'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
+        go = st.form_submit_button("Show best fishing times", use_container_width=True)
 
-        if end_day < start_day:
-            st.warning("End date must be the same as or after start date.")
-        elif lat is None or lon is None:
-            if normalize_place_query(place):
-                st.warning("Could not find that place. Try City, State or a ZIP code.")
-            else:
-                st.warning("Could not detect your location. Try entering a place name or ZIP code.")
-        else:
-            day_list = []
-            cur = start_day
-            while cur <= end_day:
-                day_list.append(cur)
-                if len(day_list) >= 14:
-                    break
-                cur = cur + timedelta(days=1)
-
-            if len(day_list) == 14 and end_day > day_list[-1]:
-                st.info("Showing first 14 days only. Shorten the range to see more detail.")
-
-            for d in day_list:
-                st.markdown("## " + d.strftime("%A") + " - " + d.strftime("%b %d, %Y"))
-
-                times = best_times(lat, lon, d)
-                if not times:
-                    st.warning("Unable to calculate fishing times for this day.")
-                    continue
-
-                m0, m1 = times["morning"]
-                e0, e1 = times["evening"]
-
-                st.markdown(
-                    "<div class='card compact-card'><div class='card-title'>Morning window</div>"
-                    "<div class='card-value'>" +
-                    m0.strftime("%I:%M %p").lstrip("0") +
-                    " - " +
-                    m1.strftime("%I:%M %p").lstrip("0") +
-                    "</div></div>",
-                    unsafe_allow_html=True,
-                )
-
-                st.markdown(
-                    "<div class='card compact-card'><div class='card-title'>Evening window</div>"
-                    "<div class='card-value'>" +
-                    e0.strftime("%I:%M %p").lstrip("0") +
-                    " - " +
-                    e1.strftime("%I:%M %p").lstrip("0") +
-                    "</div></div>",
-                    unsafe_allow_html=True,
-                )
-
-elif tool == "Wind forecast":
-    st.markdown("### Wind forecast")
-    st.markdown("<div class='small'>Current and future hourly winds from your location or a place name.</div>", unsafe_allow_html=True)
-
-    st.markdown("### Location")
-
-    place = st.text_input(
-        "Place name (optional)",
-        value=st.session_state.get("wind_place", ""),
-        placeholder="Example: Los Angeles, CA   or   90001   or   Hayden Lake, Idaho",
-        key="wind_place_input",
-    )
-    st.session_state["wind_place"] = place
-
-    st.markdown("<div class='small'>Not case sensitive. Leave blank to use your current location.</div>", unsafe_allow_html=True)
-
-    cA, cB = st.columns(2)
-    with cA:
-        if st.button("Search place", use_container_width=True, key="wind_search_place"):
-            q = normalize_place_query(place)
-            matches = geocode_search(q, count=10) if q else []
-            st.session_state["wind_place_matches"] = matches
-            st.session_state["wind_place_choice"] = matches[0]["label"] if matches else ""
-            st.session_state["wind_place_display"] = ""
-    with cB:
-        if st.button("Use my current location", use_container_width=True, key="wind_use_current"):
-            st.session_state["wind_place_matches"] = []
-            st.session_state["wind_place_choice"] = ""
-            st.session_state["wind_place_display"] = ""
-            st.session_state["lat"], st.session_state["lon"] = get_location()
-
-    matches = st.session_state.get("wind_place_matches") or []
-    if matches:
-        labels = [m["label"] for m in matches]
-        choice = st.selectbox("Choose the correct match", labels, index=0, key="wind_place_choice_select")
-        st.session_state["wind_place_choice"] = choice
-
-    inject_wiggle_button("Display winds", 5000)
-
-    if st.button("Display winds", use_container_width=True, key="go_winds"):
+    if go:
         q = normalize_place_query(place)
+
+        # If they typed a place, use geocoding. Otherwise try IP location.
         if q:
-            chosen_label = st.session_state.get("wind_place_choice", "")
-            chosen = None
-            for m in matches:
-                if m["label"] == chosen_label:
-                    chosen = m
-                    break
-
-            if chosen is None:
-                matches2 = geocode_search(q, count=10)
-                st.session_state["wind_place_matches"] = matches2
-                matches = matches2
-                chosen = matches2[0] if matches2 else None
-                st.session_state["wind_place_choice"] = chosen["label"] if chosen else ""
-
-            if chosen:
-                st.session_state["lat"], st.session_state["lon"] = chosen["lat"], chosen["lon"]
-                st.session_state["wind_place_display"] = chosen["label"]
+            matches = geocode_search(q, count=10)
+            st.session_state["times_matches"] = matches
+            if matches:
+                st.session_state["times_choice"] = matches[0]["label"]
+                st.session_state["lat"], st.session_state["lon"] = matches[0]["lat"], matches[0]["lon"]
+                st.session_state["times_display"] = matches[0]["label"]
             else:
                 st.session_state["lat"], st.session_state["lon"] = None, None
-                st.session_state["wind_place_display"] = ""
+                st.session_state["times_display"] = ""
         else:
+            st.session_state["times_matches"] = []
+            st.session_state["times_choice"] = ""
             st.session_state["lat"], st.session_state["lon"] = get_location()
-            st.session_state["wind_place_display"] = ""
+            st.session_state["times_display"] = ""
+
+    # If multiple matches, allow quick correction without extra buttons
+    matches = st.session_state.get("times_matches") or []
+    if matches:
+        labels = [m["label"] for m in matches]
+        chosen = st.selectbox("If needed, pick a different match", labels, index=0, key="times_match_pick")
+        st.session_state["times_choice"] = chosen
+        for m in matches:
+            if m["label"] == chosen:
+                st.session_state["lat"], st.session_state["lon"] = m["lat"], m["lon"]
+                st.session_state["times_display"] = m["label"]
+                break
 
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
-    display_place = st.session_state.get("wind_place_display", "")
+    display_place = st.session_state.get("times_display", "")
+
+    if display_place:
+        st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
+
+    if end_day < start_day:
+        st.warning("End date must be the same as or after start date.")
+    elif lat is None or lon is None:
+        if normalize_place_query(st.session_state.get("times_place", "")):
+            st.warning("Could not find that place. Try City, State or a ZIP code.")
+        else:
+            st.warning("Could not detect your location. Try entering a place name or ZIP code.")
+    else:
+        day_list = []
+        cur = start_day
+        while cur <= end_day:
+            day_list.append(cur)
+            if len(day_list) >= 14:
+                break
+            cur = cur + timedelta(days=1)
+
+        if len(day_list) == 14 and end_day > day_list[-1]:
+            st.info("Showing first 14 days only. Shorten the range to see more detail.")
+
+        for d in day_list:
+            st.markdown("## " + d.strftime("%A") + " - " + d.strftime("%b %d, %Y"))
+
+            times = best_times(lat, lon, d)
+            if not times:
+                st.warning("Unable to calculate fishing times for this day.")
+                continue
+
+            m0, m1 = times["morning"]
+            e0, e1 = times["evening"]
+
+            st.markdown(
+                "<div class='card compact-card'><div class='card-title'>Morning window</div>"
+                "<div class='card-value'>" +
+                m0.strftime("%I:%M %p").lstrip("0") +
+                " - " +
+                m1.strftime("%I:%M %p").lstrip("0") +
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                "<div class='card compact-card'><div class='card-title'>Evening window</div>"
+                "<div class='card-value'>" +
+                e0.strftime("%I:%M %p").lstrip("0") +
+                " - " +
+                e1.strftime("%I:%M %p").lstrip("0") +
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
+
+# -------------------------------------------------
+# WIND (single Go button, no redundant search buttons)
+# -------------------------------------------------
+elif tool == "Wind":
+    st.markdown("### Wind forecast")
+    st.markdown("<div class='small'>Current and future hourly winds from your location or a place name.</div>", unsafe_allow_html=True)
+    st.markdown("")
+
+    with st.form("wind_form", clear_on_submit=False):
+        place = st.text_input(
+            "Place name (optional)",
+            value=st.session_state.get("wind_place", ""),
+            placeholder="Example: Los Angeles, CA   or   90001   or   Hayden Lake, Idaho",
+        )
+        st.session_state["wind_place"] = place
+        go = st.form_submit_button("Show winds", use_container_width=True)
+
+    if go:
+        q = normalize_place_query(place)
+        if q:
+            matches = geocode_search(q, count=10)
+            st.session_state["wind_matches"] = matches
+            if matches:
+                st.session_state["wind_choice"] = matches[0]["label"]
+                st.session_state["lat"], st.session_state["lon"] = matches[0]["lat"], matches[0]["lon"]
+                st.session_state["wind_display"] = matches[0]["label"]
+            else:
+                st.session_state["lat"], st.session_state["lon"] = None, None
+                st.session_state["wind_display"] = ""
+        else:
+            st.session_state["wind_matches"] = []
+            st.session_state["wind_choice"] = ""
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+            st.session_state["wind_display"] = ""
+
+    matches = st.session_state.get("wind_matches") or []
+    if matches:
+        labels = [m["label"] for m in matches]
+        chosen = st.selectbox("If needed, pick a different match", labels, index=0, key="wind_match_pick")
+        st.session_state["wind_choice"] = chosen
+        for m in matches:
+            if m["label"] == chosen:
+                st.session_state["lat"], st.session_state["lon"] = m["lat"], m["lon"]
+                st.session_state["wind_display"] = m["label"]
+                break
+
+    lat = st.session_state.get("lat")
+    lon = st.session_state.get("lon")
+    display_place = st.session_state.get("wind_display", "")
 
     if display_place:
         st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
 
     if lat is None or lon is None:
-        if normalize_place_query(place):
+        if normalize_place_query(st.session_state.get("wind_place", "")):
             st.warning("Could not find that place. Try City, State or a ZIP code.")
         else:
-            st.info("Tap Display winds. If location fails, enter a place name or ZIP code.")
+            st.info("Tap Show winds. If location fails, enter a place name or ZIP code.")
     else:
         wind = get_wind_hours(lat, lon)
         now_local = datetime.now()
@@ -1127,7 +914,10 @@ elif tool == "Wind forecast":
                     unsafe_allow_html=True,
                 )
 
-elif tool == "Trolling depth calculator":
+# -------------------------------------------------
+# DEPTH
+# -------------------------------------------------
+elif tool == "Depth":
     st.markdown("### Trolling depth calculator")
     st.markdown("<div class='small'>Location not required.</div>", unsafe_allow_html=True)
 
@@ -1152,7 +942,10 @@ elif tool == "Trolling depth calculator":
         unsafe_allow_html=True,
     )
 
-elif tool == "Species tips":
+# -------------------------------------------------
+# TIPS
+# -------------------------------------------------
+elif tool == "Tips":
     st.markdown("### Species tips")
     st.markdown("<div class='small'>Pick a species and get tips plus its best activity temperature range, popular baits, and common rigs.</div>", unsafe_allow_html=True)
 
@@ -1168,16 +961,22 @@ elif tool == "Species tips":
     species = st.selectbox("Species", species_list, index=default_index)
     render_species_tips(species, db)
 
+# -------------------------------------------------
+# SPEED
+# -------------------------------------------------
 else:
     st.markdown("### Speedometer")
     st.markdown("<div class='small'>GPS speed from your phone browser. Works best once GPS has a lock and you are moving.</div>", unsafe_allow_html=True)
     phone_speedometer_widget()
 
 # -------------------------------------------------
-# Footer
+# Bottom navigation + footer
 # -------------------------------------------------
+render_bottom_nav()
+
 st.markdown(
-    "<div class='footer'><strong>FishyNW.com</strong><br>"
+    "<div style='text-align:center; margin-top:18px; opacity:0.88; font-size:0.95rem;'>"
+    "<strong>FishyNW.com</strong><br>"
     "&copy; 2026 FishyNW. All rights reserved."
     "</div>",
     unsafe_allow_html=True,
