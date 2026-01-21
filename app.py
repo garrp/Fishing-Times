@@ -179,6 +179,25 @@ div.stButton > button:disabled {
   color: #6b6b6b !important;
   border-color: #b6d6c1 !important;
 }
+
+/* Consent screen logo area */
+.consent-logo-full {
+  width: 100%;
+  height: 72vh;
+  margin-top: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(0,0,0,0.14);
+  background: rgba(0,0,0,0.02);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.consent-logo-full img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -208,7 +227,7 @@ def render_analytics_consent_banner():
   <div style="font-weight:800;font-size:1.05rem;margin-bottom:6px;">Analytics notice</div>
   <div style="opacity:0.88;">
     This app can send anonymous usage analytics to help improve the tools and performance.
-    No personal information is collected.  I only goof with usage data.
+    No personal information is collected.
   </div>
 </div>
 """,
@@ -224,6 +243,12 @@ def render_analytics_consent_banner():
         if st.button("Decline analytics", use_container_width=True, key="consent_decline"):
             st.session_state["analytics_consent"] = "declined"
             st.rerun()
+
+    # Full-screen-ish logo area BELOW the consent banner
+    st.markdown(
+        "<div class='consent-logo-full'><img src='" + LOGO_URL + "' alt='FishyNW Logo'></div>",
+        unsafe_allow_html=True,
+    )
 
 # -------------------------------------------------
 # GA4 (server-side) analytics - Streamlit Community Cloud safe
@@ -864,7 +889,6 @@ if tool == "Best fishing times":
 
     st.markdown("### Location")
 
-    # Numeric-only inputs + explicit checkbox so "optional" is real
     use_manual = st.checkbox("Use manual latitude and longitude", value=False, key="use_manual_best")
 
     c0, c1 = st.columns(2)
