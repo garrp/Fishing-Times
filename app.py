@@ -295,6 +295,9 @@ def ga_send_event(event_name, params=None, debug=False):
     except Exception:
         return
 
+# -------------------------------------------------
+# Location / Geocoding
+# -------------------------------------------------
 def get_location():
     try:
         data = get_json("https://ipinfo.io/json", 6)
@@ -305,6 +308,46 @@ def get_location():
         return float(lat), float(lon)
     except Exception:
         return None, None
+
+def geocode_place_name(place_name):
+    # Open-Meteo geocoding (no key)
+    # https://geocoding-api.open-meteo.com/v1/search?name=Spokane&count=1&language=en&format=json
+    try:
+        q = str(place_name).strip()
+        if not q:
+            return None, None, None
+
+        url = (
+            "https://geocoding-api.open-meteo.com/v1/search"
+            "?name=" + requests.utils.quote(q) +
+            "&count=1&language=en&format=json"
+        )
+        data = get_json(url, timeout=8)
+        results = data.get("results") or []
+        if not results:
+            return None, None, None
+
+        r0 = results[0]
+        lat = r0.get("latitude")
+        lon = r0.get("longitude")
+
+        name = str(r0.get("name") or q)
+        admin1 = str(r0.get("admin1") or "").strip()
+        country = str(r0.get("country") or "").strip()
+
+        parts = [name]
+        if admin1:
+            parts.append(admin1)
+        if country:
+            parts.append(country)
+        display = ", ".join(parts)
+
+        if lat is None or lon is None:
+            return None, None, None
+
+        return float(lat), float(lon), display
+    except Exception:
+        return None, None, None
 
 def get_sun_times(lat, lon, day_iso):
     url = (
@@ -803,6 +846,16 @@ if "lon" not in st.session_state:
 if "best_go" not in st.session_state:
     st.session_state["best_go"] = False
 
+if "best_place" not in st.session_state:
+    st.session_state["best_place"] = ""
+if "best_place_display" not in st.session_state:
+    st.session_state["best_place_display"] = ""
+
+if "wind_place" not in st.session_state:
+    st.session_state["wind_place"] = ""
+if "wind_place_display" not in st.session_state:
+    st.session_state["wind_place_display"] = ""
+
 # Navigation mode:
 # - "home": show ALL tool buttons on Home page
 # - "sidebar": move the tool buttons into the sidebar after a tool selection
@@ -835,19 +888,14 @@ PAGE_TITLES = {
 def nav_to(tool_name):
     st.session_state["tool"] = tool_name
 
-    # IMPORTANT BEHAVIOR:
-    # - Any tool selection switches nav_mode to sidebar
-    # - Home selection switches nav_mode back to home (landing page with buttons)
+    # Any tool selection switches nav_mode to sidebar.
+    # Home selection switches nav_mode back to home and collapses sidebar.
     if tool_name == "Home":
         st.session_state["nav_mode"] = "home"
-        # Request sidebar collapse so the menu "goes away"
         request_sidebar_collapse()
         return
 
     st.session_state["nav_mode"] = "sidebar"
-
-    if tool_name in ["Best fishing times", "Wind forecast"]:
-        st.session_state["lat"], st.session_state["lon"] = get_location()
 
     if tool_name == "Best fishing times":
         st.session_state["best_go"] = False
@@ -864,7 +912,6 @@ if st.session_state.get("nav_mode") == "sidebar":
         st.markdown("<div class='sb-logo'><img src='" + LOGO_URL + "'></div>", unsafe_allow_html=True)
         st.caption("Version " + APP_VERSION)
 
-        # Home brings you back to landing page (buttons on page) AND collapses sidebar
         if st.button("Home", use_container_width=True, key="nav_home"):
             nav_to("Home")
             st.rerun()
@@ -891,7 +938,6 @@ if st.session_state.get("nav_mode") == "sidebar":
 
     run_sidebar_collapse_if_needed()
 else:
-    # If we're in home mode, still honor any pending collapse request
     run_sidebar_collapse_if_needed()
 
 # -------------------------------------------------
@@ -949,51 +995,46 @@ render_header(PAGE_TITLES.get(tool, ""))
 # Main content
 # -------------------------------------------------
 if tool == "Best fishing times":
-    lat = st.session_state.get("lat")
-    lon = st.session_state.get("lon")
-
     st.markdown("### Location")
+    place = st.text_input(
+        "Place name (optional)",
+        value=st.session_state.get("best_place", ""),
+        placeholder="Example: Hauser Lake, Coeur d'Alene, Spokane",
+        key="best_place_input",
+    )
+    st.session_state["best_place"] = place
 
-    use_manual = st.checkbox("Use manual latitude and longitude", value=False, key="use_manual_best")
-
-    c0, c1 = st.columns(2)
-    with c0:
-        lat_in = st.number_input(
-            "Latitude",
-            min_value=-90.0,
-            max_value=90.0,
-            value=(float(lat) if lat is not None else 0.0),
-            step=0.0001,
-            format="%.6f",
-            key="manual_lat_num",
-        )
-    with c1:
-        lon_in = st.number_input(
-            "Longitude",
-            min_value=-180.0,
-            max_value=180.0,
-            value=(float(lon) if lon is not None else 0.0),
-            step=0.0001,
-            format="%.6f",
-            key="manual_lon_num",
-        )
-
-    st.markdown("<div class='small'>If manual is off, the app uses your current location.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
     inject_wiggle_button("Display Best Fishing Times", 5000)
 
     if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
-        ga_send_event("action", {"name": "display_best_times", "tool": "Best fishing times"}, debug=False)
+        ga_send_event(
+            "action",
+            {"name": "display_best_times", "tool": "Best fishing times", "has_place": bool(place.strip())},
+            debug=False,
+        )
         st.session_state["best_go"] = True
 
-        if use_manual:
-            st.session_state["lat"], st.session_state["lon"] = float(lat_in), float(lon_in)
+        if place.strip():
+            lat, lon, display = geocode_place_name(place.strip())
+            if lat is None or lon is None:
+                st.session_state["lat"], st.session_state["lon"] = None, None
+                st.session_state["best_place_display"] = ""
+            else:
+                st.session_state["lat"], st.session_state["lon"] = lat, lon
+                st.session_state["best_place_display"] = display or place.strip()
         else:
             st.session_state["lat"], st.session_state["lon"] = get_location()
+            st.session_state["best_place_display"] = ""
 
     if st.session_state.get("best_go"):
         lat = st.session_state.get("lat")
         lon = st.session_state.get("lon")
+        display_place = st.session_state.get("best_place_display", "")
+
+        if display_place:
+            st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
 
         st.markdown("### Date range")
         d0, d1 = st.columns(2)
@@ -1007,7 +1048,10 @@ if tool == "Best fishing times":
         if end_day < start_day:
             st.warning("End date must be the same as or after start date.")
         elif lat is None or lon is None:
-            st.info("Turn on manual and enter lat/lon, or tap the button again to use current location.")
+            if place.strip():
+                st.warning("Could not find that place. Try a different name (example: city and state).")
+            else:
+                st.warning("Could not detect your location. Try entering a place name.")
         else:
             day_list = []
             cur = start_day
@@ -1053,53 +1097,52 @@ if tool == "Best fishing times":
 
 elif tool == "Wind forecast":
     st.markdown("### Wind forecast")
-    st.markdown("<div class='small'>Current and future hourly winds from your location or manual lat/lon.</div>", unsafe_allow_html=True)
-
-    lat = st.session_state.get("lat")
-    lon = st.session_state.get("lon")
+    st.markdown("<div class='small'>Current and future hourly winds from your location or a place name.</div>", unsafe_allow_html=True)
 
     st.markdown("### Location")
+    place = st.text_input(
+        "Place name (optional)",
+        value=st.session_state.get("wind_place", ""),
+        placeholder="Example: Hayden Lake, Spokane, Coeur d'Alene",
+        key="wind_place_input",
+    )
+    st.session_state["wind_place"] = place
 
-    use_manual = st.checkbox("Use manual latitude and longitude", value=False, key="use_manual_wind")
-
-    c0, c1 = st.columns(2)
-    with c0:
-        lat_in = st.number_input(
-            "Latitude",
-            min_value=-90.0,
-            max_value=90.0,
-            value=(float(lat) if lat is not None else 0.0),
-            step=0.0001,
-            format="%.6f",
-            key="wind_lat_num",
-        )
-    with c1:
-        lon_in = st.number_input(
-            "Longitude",
-            min_value=-180.0,
-            max_value=180.0,
-            value=(float(lon) if lon is not None else 0.0),
-            step=0.0001,
-            format="%.6f",
-            key="wind_lon_num",
-        )
-
-    st.markdown("<div class='small'>If manual is off, the app uses your current location.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
     inject_wiggle_button("Display winds", 5000)
 
     if st.button("Display winds", use_container_width=True, key="go_winds"):
-        ga_send_event("action", {"name": "display_winds", "tool": "Wind forecast"}, debug=False)
-        if use_manual:
-            st.session_state["lat"], st.session_state["lon"] = float(lat_in), float(lon_in)
+        ga_send_event(
+            "action",
+            {"name": "display_winds", "tool": "Wind forecast", "has_place": bool(place.strip())},
+            debug=False,
+        )
+
+        if place.strip():
+            lat, lon, display = geocode_place_name(place.strip())
+            if lat is None or lon is None:
+                st.session_state["lat"], st.session_state["lon"] = None, None
+                st.session_state["wind_place_display"] = ""
+            else:
+                st.session_state["lat"], st.session_state["lon"] = lat, lon
+                st.session_state["wind_place_display"] = display or place.strip()
         else:
             st.session_state["lat"], st.session_state["lon"] = get_location()
+            st.session_state["wind_place_display"] = ""
 
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
+    display_place = st.session_state.get("wind_place_display", "")
+
+    if display_place:
+        st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
 
     if lat is None or lon is None:
-        st.info("Tap Display winds. If manual is on, enter lat/lon first.")
+        if place.strip():
+            st.warning("Could not find that place. Try a different name (example: city and state).")
+        else:
+            st.info("Tap Display winds. If location fails, enter a place name.")
     else:
         wind = get_wind_hours(lat, lon)
         now_local = datetime.now()
