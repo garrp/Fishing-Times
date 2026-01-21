@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.8.1
+# Version 1.8.2
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.8.1"
+APP_VERSION = "1.8.2"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.8.1",
+    "User-Agent": "FishyNW-App-1.8.2",
     "Accept": "application/json",
 }
 
@@ -30,7 +30,7 @@ st.set_page_config(
 # Session defaults
 # -------------------------------------------------
 if "tool" not in st.session_state:
-    # Default to Best fishing times like you want
+    # Default to Best fishing times
     st.session_state["tool"] = "Best fishing times"
 
 if "lat" not in st.session_state:
@@ -232,11 +232,12 @@ def inject_button_color_by_text(button_text, bg_hex, fg_hex, border_hex, delay_m
 
   function styleBtn(btn) {
     try {
-      btn.style.backgroundColor = bg;
-      btn.style.color = fg;
-      btn.style.border = "1px solid " + border;
-      btn.style.fontWeight = "900";
-      btn.style.borderRadius = "10px";
+      // Use IMPORTANT so it beats your global CSS !important
+      btn.style.setProperty("background-color", bg, "important");
+      btn.style.setProperty("color", fg, "important");
+      btn.style.setProperty("border", "1px solid " + border, "important");
+      btn.style.setProperty("font-weight", "900", "important");
+      btn.style.setProperty("border-radius", "10px", "important");
     } catch (e) {}
   }
 
@@ -264,7 +265,7 @@ def inject_button_color_by_text(button_text, bg_hex, fg_hex, border_hex, delay_m
         clearInterval(iv);
         styleBtn(b);
       }
-      if (tries >= 20) clearInterval(iv);
+      if (tries >= 25) clearInterval(iv);
     }, 200);
   }, delay);
 })();
