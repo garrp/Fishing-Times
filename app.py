@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.9.4
+# Version 1.9.5
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -9,12 +9,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.9.4"
+APP_VERSION = "1.9.5"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.9.4",
+    "User-Agent": "FishyNW-App-1.9.5",
     "Accept": "application/json",
 }
 
@@ -155,6 +155,37 @@ div[data-baseweb="select"] > div {
 }
 @media (prefers-color-scheme: dark) {
   .footer { border-top: 1px solid rgba(255,255,255,0.16); }
+}
+
+/* -------------------------------------------------
+   NEW: Set Location button states
+   ------------------------------------------------- */
+.setloc-btn {
+  border-radius: 12px !important;
+  min-height: 48px !important;
+  font-weight: 950 !important;
+  width: 100% !important;
+  border: 1px solid transparent !important;
+}
+
+/* Not set yet = light red */
+.setloc-btn.notset {
+  background-color: #f2a3a3 !important;
+  color: #4a0f0f !important;
+  border-color: #e07b7b !important;
+}
+.setloc-btn.notset:hover {
+  background-color: #ea8f8f !important;
+}
+
+/* Set = green */
+.setloc-btn.set {
+  background-color: #8fd19e !important;
+  color: #0b2e13 !important;
+  border-color: #6fbf87 !important;
+}
+.setloc-btn.set:hover {
+  background-color: #7cc78f !important;
 }
 </style>
 """,
@@ -491,9 +522,36 @@ st.markdown(
 # Top row: Set Location (one tap) + status
 top_cols = st.columns([1, 1])
 with top_cols[0]:
-    if st.button("Set Location", use_container_width=True, key="top_set_location"):
-        st.session_state["do_set_location"] = True
-        st.rerun()
+    # -------------------------------------------------
+    # CHANGED: red until set, green once established
+    # -------------------------------------------------
+    loc_ready = location_ready()
+    btn_label = "Location Set" if loc_ready else "Set Location"
+    btn_class = "setloc-btn set" if loc_ready else "setloc-btn notset"
+
+    # Hide the default Streamlit button look for this one control only
+    st.markdown(
+        """
+<style>
+div[data-testid="stButton"] > button.fishy-hidden-btn { display: none !important; }
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # Render a custom colored button that clicks the hidden real Streamlit button
+    st.markdown(
+        "<button class='" + btn_class + "' onclick=\"document.getElementById('real_set_loc').click()\">" +
+        btn_label +
+        "</button>",
+        unsafe_allow_html=True,
+    )
+
+    # Hidden real Streamlit button (keeps rerun + state reliable)
+    if st.button("real", key="real_set_loc", help=None, use_container_width=True):
+        if not loc_ready:
+            st.session_state["do_set_location"] = True
+            st.rerun()
 
 with top_cols[1]:
     st.markdown(
