@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.9.4
+# Version 1.9.5
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -9,12 +9,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.9.4"
+APP_VERSION = "1.9.5"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.9.4",
+    "User-Agent": "FishyNW-App-1.9.5",
     "Accept": "application/json",
 }
 
@@ -28,11 +28,46 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# State
+# Pages
 # -------------------------------------------------
-if "page" not in st.session_state:
-    st.session_state["page"] = "Home"
+PAGES = ["Home", "Best Times", "Wind", "Depth", "Species", "Speed"]
+PAGE_KEYS = {
+    "Home": "home",
+    "Best Times": "best",
+    "Wind": "wind",
+    "Depth": "depth",
+    "Species": "species",
+    "Speed": "speed",
+}
+KEY_TO_PAGE = {v: k for k, v in PAGE_KEYS.items()}
 
+def get_page_from_url():
+    try:
+        qp = st.query_params
+        p = qp.get("page", "")
+        if isinstance(p, list):
+            p = p[0] if p else ""
+        p = (p or "").strip().lower()
+        return KEY_TO_PAGE.get(p, "Home")
+    except Exception:
+        return "Home"
+
+def set_page_in_url(page_name):
+    key = PAGE_KEYS.get(page_name, "home")
+    st.query_params["page"] = key
+
+# Session page default from URL (so bottom nav works)
+if "page" not in st.session_state:
+    st.session_state["page"] = get_page_from_url()
+else:
+    # If URL changes (clicked bottom nav), sync session
+    url_page = get_page_from_url()
+    if url_page != st.session_state["page"]:
+        st.session_state["page"] = url_page
+
+# -------------------------------------------------
+# Location state
+# -------------------------------------------------
 if "loc_lat" not in st.session_state:
     st.session_state["loc_lat"] = None
 if "loc_lon" not in st.session_state:
@@ -47,15 +82,16 @@ if "loc_status_msg" not in st.session_state:
     st.session_state["loc_status_msg"] = ""
 
 # -------------------------------------------------
-# CSS (sticky top bar + clean cards)
+# CSS (sticky top bar + floating bottom nav)
 # -------------------------------------------------
 st.markdown(
     """
 <style>
+/* Give the bottom nav room so content never hides behind it */
 .block-container {
   max-width: 920px;
   padding-top: 0.75rem;
-  padding-bottom: 4.0rem;
+  padding-bottom: 6.25rem; /* space for bottom nav */
 }
 
 /* Sticky top bar */
@@ -132,29 +168,64 @@ div.stButton > button:hover, button[kind="primary"]:hover {
   background-color: #7cc78f !important;
   color: #08210f !important;
 }
-div.stButton > button:disabled {
-  background-color: #cfe8d6 !important;
-  color: #6b6b6b !important;
-  border-color: #b6d6c1 !important;
-}
 
-/* Inputs taller for mobile */
-div[data-baseweb="input"] input,
-div[data-baseweb="select"] > div {
-  min-height: 46px !important;
-}
-
-/* Footer */
-.footer {
-  margin-top: 34px;
-  padding-top: 18px;
+/* Floating bottom nav (custom HTML) */
+.fishy-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  padding: 10px 10px 12px 10px;
+  background: rgba(255,255,255,0.92);
   border-top: 1px solid rgba(0,0,0,0.14);
-  text-align:center;
-  font-size: 0.95rem;
-  opacity: 0.9;
+  backdrop-filter: blur(8px);
 }
 @media (prefers-color-scheme: dark) {
-  .footer { border-top: 1px solid rgba(255,255,255,0.16); }
+  .fishy-bottom-nav {
+    background: rgba(15,15,15,0.90);
+    border-top: 1px solid rgba(255,255,255,0.16);
+  }
+}
+.fishy-bottom-inner {
+  max-width: 920px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .fishy-bottom-inner {
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 44px;
+  }
+}
+.navbtn {
+  border-radius: 12px;
+  padding: 10px 10px;
+  font-weight: 900;
+  border: 1px solid rgba(0,0,0,0.16);
+  background: rgba(0,0,0,0.04);
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+  height: 44px;
+}
+@media (prefers-color-scheme: dark) {
+  .navbtn { border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06); }
+}
+.navbtn:active { transform: translateY(1px); }
+
+/* Selected state */
+.navbtn.sel {
+  background: #8fd19e;
+  border-color: #6fbf87;
+  color: #0b2e13;
+}
+
+/* Small labels on tiny screens */
+@media (max-width: 380px) {
+  .navbtn { font-size: 0.86rem; padding: 8px; }
 }
 </style>
 """,
@@ -353,71 +424,19 @@ def speedometer_widget():
     """
     components.html(html, height=250)
 
-# -------------------------------------------------
-# Species tips (same as before, condensed display)
-# -------------------------------------------------
 def species_db():
     return {
-        "Kokanee": {"temp_f": (42, 55), "Depths": ["Mid"],
-            "Baits": ["Small hoochies", "Small spinners (wedding ring)", "Corn with scent (where used)"],
-            "Rigs": ["Dodger + leader + hoochie/spinner", "Weights or downrigger to match marks"],
-            "Mid": ["Troll dodger plus small hoochie or spinner behind it.", "Tune speed until you get a steady rod thump."],
-            "Quick": ["Small speed changes can turn on the bite.", "Set 2 to 5 ft above marks."],
-        },
-        "Rainbow trout": {"temp_f": (45, 65), "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": ["Small spoons", "Inline spinners", "Floating minnows", "Worms (where legal)", "PowerBait (where legal)"],
-            "Rigs": ["Cast and retrieve", "Trolling with long leads", "Slip sinker bait rig (near bottom)"],
-            "Top": ["Cast spinners and spoons early and late."],
-            "Mid": ["Troll small spoons or spinners at 1.2 to 1.8 mph."],
-            "Bottom": ["Fish bait just off bottom near structure and drop-offs."],
-            "Quick": ["If bites stop, change lure color or tweak speed."],
-        },
-        "Lake trout": {"temp_f": (42, 55), "Depths": ["Mid", "Bottom"],
-            "Baits": ["Tube jigs", "Large spoons", "Blade baits", "Swimbaits (deep)"],
-            "Rigs": ["Vertical jigging", "Deep trolling with weights or downrigger"],
-            "Bottom": ["Jig humps, points, deep breaks.", "Fish within a few feet of bottom."],
-            "Quick": ["When you find one, stay on that contour."],
-        },
-        "Chinook salmon": {"temp_f": (44, 58), "Depths": ["Mid", "Bottom"],
-            "Baits": ["Hoochies", "Spoons", "Spinners", "Cut plug / herring style (where used)"],
-            "Rigs": ["Flasher + leader + hoochie/spoon", "Weights or downrigger for depth control"],
-            "Quick": ["Speed and depth control are the game.", "Repeat the depth and speed that got your bite."],
-        },
-        "Smallmouth bass": {"temp_f": (60, 75), "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": ["Walking baits", "Poppers", "Jerkbaits", "Swimbaits", "Ned rigs", "Tubes", "Drop shot plastics"],
-            "Rigs": ["Ned rig", "Drop shot", "Tube jig"],
-            "Quick": ["Follow wind on points.", "After a miss, throw a Ned or drop shot back."],
-        },
-        "Largemouth bass": {"temp_f": (65, 80), "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": ["Frogs", "Buzzbaits", "Swim jigs", "Texas rig plastics", "Jigs"],
-            "Rigs": ["Texas rig", "Swim jig", "Pitching jig"],
-            "Quick": ["Shade is a magnet: docks, reeds, mats.", "Dirty water: go louder and bigger."],
-        },
-        "Walleye": {"temp_f": (55, 70), "Depths": ["Mid", "Bottom"],
-            "Baits": ["Crankbaits (trolling)", "Jigs with soft plastics", "Blade baits"],
-            "Rigs": ["Jig and soft plastic", "Trolling crankbaits on breaks"],
-            "Quick": ["Low light is best: early, late, cloudy.", "Stay on transitions: flats to deep breaks."],
-        },
-        "Perch": {"temp_f": (55, 75), "Depths": ["Mid", "Bottom"],
-            "Baits": ["Small jigs", "Worm pieces", "Tiny grubs"],
-            "Rigs": ["Small jighead + bait"],
-            "Quick": ["When you mark a school, hold position and pick them off."],
-        },
-        "Bluegill": {"temp_f": (65, 80), "Depths": ["Top", "Mid"],
-            "Baits": ["Tiny poppers", "Small jigs", "Worm pieces", "Micro plastics"],
-            "Rigs": ["Float + small jig/hook", "Ultralight jighead"],
-            "Quick": ["Downsize until you get consistent bites."],
-        },
-        "Channel catfish": {"temp_f": (65, 85), "Depths": ["Bottom"],
-            "Baits": ["Cut bait", "Worms", "Stink bait", "Chicken liver (where used)"],
-            "Rigs": ["Slip sinker / Carolina rig"],
-            "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
-        },
-        "Trout (general)": {"temp_f": (45, 65), "Depths": ["Top", "Mid", "Bottom"],
-            "Baits": ["Spoons", "Inline spinners", "Worms (where legal)", "PowerBait (where legal)"],
-            "Rigs": ["Cast and retrieve", "Trolling (long leads)", "Slip sinker bait rig"],
-            "Quick": ["Cloud cover and chop can help."],
-        },
+        "Kokanee": {"temp_f": (42, 55), "Depths": ["Mid"], "Baits": ["Small hoochies", "Small spinners (wedding ring)"], "Rigs": ["Dodger + leader + hoochie/spinner"], "Quick": ["Small speed changes can turn on the bite."]},
+        "Rainbow trout": {"temp_f": (45, 65), "Depths": ["Top", "Mid", "Bottom"], "Baits": ["Small spoons", "Inline spinners"], "Rigs": ["Cast and retrieve", "Trolling"], "Quick": ["Change lure color or tweak speed."]},
+        "Lake trout": {"temp_f": (42, 55), "Depths": ["Mid", "Bottom"], "Baits": ["Tube jigs", "Large spoons"], "Rigs": ["Vertical jigging", "Deep trolling"], "Quick": ["Fish within a few feet of bottom."]},
+        "Chinook salmon": {"temp_f": (44, 58), "Depths": ["Mid", "Bottom"], "Baits": ["Hoochies", "Spoons"], "Rigs": ["Flasher + leader"], "Quick": ["Repeat the depth and speed that got your bite."]},
+        "Smallmouth bass": {"temp_f": (60, 75), "Depths": ["Top", "Mid", "Bottom"], "Baits": ["Ned rigs", "Tubes"], "Rigs": ["Ned rig", "Drop shot"], "Quick": ["Follow wind on points."]},
+        "Largemouth bass": {"temp_f": (65, 80), "Depths": ["Top", "Mid", "Bottom"], "Baits": ["Frogs", "Texas rig plastics"], "Rigs": ["Texas rig"], "Quick": ["Shade is a magnet."]},
+        "Walleye": {"temp_f": (55, 70), "Depths": ["Mid", "Bottom"], "Baits": ["Crankbaits", "Jigs"], "Rigs": ["Jig and soft plastic"], "Quick": ["Low light is best."]},
+        "Perch": {"temp_f": (55, 75), "Depths": ["Mid", "Bottom"], "Baits": ["Small jigs"], "Rigs": ["Small jighead + bait"], "Quick": ["Hold position on schools."]},
+        "Bluegill": {"temp_f": (65, 80), "Depths": ["Top", "Mid"], "Baits": ["Small jigs"], "Rigs": ["Float + small jig"], "Quick": ["Downsize for bites."]},
+        "Channel catfish": {"temp_f": (65, 85), "Depths": ["Bottom"], "Baits": ["Cut bait", "Worms"], "Rigs": ["Slip sinker / Carolina"], "Quick": ["Evening and night are prime."]},
+        "Trout (general)": {"temp_f": (45, 65), "Depths": ["Top", "Mid", "Bottom"], "Baits": ["Spoons", "Inline spinners"], "Rigs": ["Cast and retrieve", "Trolling"], "Quick": ["Cloud cover and chop can help."]},
     }
 
 def render_species(name, info):
@@ -425,55 +444,19 @@ def render_species(name, info):
     depths = info.get("Depths", [])
     baits = info.get("Baits", [])
     rigs = info.get("Rigs", [])
-
     st.markdown(
         "<div class='card'><div class='card-title'>Most active water temp</div>"
         "<div class='kpi'>" + str(lo) + " to " + str(hi) + " F</div>"
         "<div class='kpi-sub'>Depth focus: " + ", ".join(depths) + "</div></div>",
         unsafe_allow_html=True,
     )
-
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(
-            "<div class='card'><div class='card-title'>Popular baits</div><ul>" +
-            "".join(["<li>" + x + "</li>" for x in baits]) + "</ul></div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div class='card'><div class='card-title'>Popular baits</div><ul>" + "".join(["<li>"+x+"</li>" for x in baits]) + "</ul></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown(
-            "<div class='card'><div class='card-title'>Common rigs</div><ul>" +
-            "".join(["<li>" + x + "</li>" for x in rigs]) + "</ul></div>",
-            unsafe_allow_html=True,
-        )
-
-    def section(title, key):
-        items = info.get(key, [])
-        if not items:
-            return
-        st.markdown(
-            "<div class='card'><div class='card-title'>" + title + "</div><ul>" +
-            "".join(["<li>" + x + "</li>" for x in items]) + "</ul></div>",
-            unsafe_allow_html=True,
-        )
-
-    if info.get("Top"):
-        section("Topwater tips", "Top")
-    if info.get("Mid"):
-        section("Mid water tips", "Mid")
-    if info.get("Bottom"):
-        section("Bottom tips", "Bottom")
+        st.markdown("<div class='card'><div class='card-title'>Common rigs</div><ul>" + "".join(["<li>"+x+"</li>" for x in rigs]) + "</ul></div>", unsafe_allow_html=True)
     if info.get("Quick"):
-        section("Quick tips", "Quick")
-
-# -------------------------------------------------
-# Navigation
-# -------------------------------------------------
-PAGES = ["Home", "Best Times", "Wind", "Depth", "Species", "Speed"]
-
-def go(page_name):
-    st.session_state["page"] = page_name
-    st.rerun()
+        st.markdown("<div class='card'><div class='card-title'>Quick tips</div><ul>" + "".join(["<li>"+x+"</li>" for x in info.get("Quick", [])]) + "</ul></div>", unsafe_allow_html=True)
 
 # -------------------------------------------------
 # Sticky top bar
@@ -488,13 +471,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Top row: Set Location (one tap) + status
 top_cols = st.columns([1, 1])
 with top_cols[0]:
     if st.button("Set Location", use_container_width=True, key="top_set_location"):
         st.session_state["do_set_location"] = True
         st.rerun()
-
 with top_cols[1]:
     st.markdown(
         "<div class='small muted' style='text-align:right;'>Using: <strong>" +
@@ -503,41 +484,21 @@ with top_cols[1]:
         unsafe_allow_html=True,
     )
 
-current_page = st.session_state.get("page", "Home")
-try:
-    nav_index = PAGES.index(current_page)
-except Exception:
-    nav_index = 0
-
-nav_choice = st.radio(
-    "Navigation",
-    PAGES,
-    index=nav_index,
-    horizontal=True,
-    label_visibility="collapsed",
-)
-
-if nav_choice != current_page:
-    st.session_state["page"] = nav_choice
-    st.rerun()
-
 st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------------------------------
-# One-tap location action (no other options)
+# One-tap location action
 # -------------------------------------------------
 if st.session_state.get("do_set_location"):
     st.session_state["do_set_location"] = False
     with st.spinner("Setting location..."):
         lat2, lon2 = ip_location()
-
     if lat2 is None or lon2 is None:
         st.session_state["loc_status_msg"] = "Could not set location. Tap Set Location again."
     else:
         set_location(lat2, lon2, "Approximate location")
         st.session_state["loc_status_msg"] = "Location set."
 
-# Show a simple status line (no clutter)
 msg = st.session_state.get("loc_status_msg", "")
 if msg:
     if msg == "Location set.":
@@ -547,9 +508,10 @@ if msg:
     st.session_state["loc_status_msg"] = ""
 
 # -------------------------------------------------
-# Pages
+# Main pages
 # -------------------------------------------------
 page = st.session_state.get("page", "Home")
+set_page_in_url(page)
 
 if page == "Home":
     st.markdown("## Quick start")
@@ -563,17 +525,12 @@ if page == "Home":
             unsafe_allow_html=True,
         )
 
-    st.markdown("## Tools")
-    if st.button("Best Times", use_container_width=True, key="home_btn_best"):
-        go("Best Times")
-    if st.button("Wind", use_container_width=True, key="home_btn_wind"):
-        go("Wind")
-    if st.button("Depth", use_container_width=True, key="home_btn_depth"):
-        go("Depth")
-    if st.button("Species", use_container_width=True, key="home_btn_species"):
-        go("Species")
-    if st.button("Speed", use_container_width=True, key="home_btn_speed"):
-        go("Speed")
+    st.markdown(
+        "<div class='card'><div class='card-title'>Tools</div>"
+        "<div class='small'>Use the bottom navigation to switch tools.</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 elif page == "Best Times":
     st.markdown("## Best fishing times")
@@ -623,7 +580,7 @@ elif page == "Best Times":
             cA, cB = st.columns(2)
             with cA:
                 st.markdown(
-                    "<div class='card'><div class='card-title'>Morning window</div>"
+                    "<div class='card'><div class='card-title'>Morning</div>"
                     "<div class='kpi'>" + m0.strftime("%I:%M %p").lstrip("0") + "</div>"
                     "<div class='kpi-sub'>to " + m1.strftime("%I:%M %p").lstrip("0") + "</div>"
                     "</div>",
@@ -631,7 +588,7 @@ elif page == "Best Times":
                 )
             with cB:
                 st.markdown(
-                    "<div class='card'><div class='card-title'>Evening window</div>"
+                    "<div class='card'><div class='card-title'>Evening</div>"
                     "<div class='kpi'>" + e0.strftime("%I:%M %p").lstrip("0") + "</div>"
                     "<div class='kpi-sub'>to " + e1.strftime("%I:%M %p").lstrip("0") + "</div>"
                     "</div>",
@@ -656,7 +613,7 @@ elif page == "Wind":
         lon = st.session_state.get("loc_lon")
 
         by_time, cur_dt, cur_mph = winds(lat, lon)
-        cur_list, fut_list = split_winds(by_time, cur_dt)
+        _, fut_list = split_winds(by_time, cur_dt)
 
         if cur_mph is not None:
             st.markdown(
@@ -736,3 +693,30 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
+
+# -------------------------------------------------
+# Floating bottom nav (real buttons, highlight selected)
+# Uses URL query string (?page=wind) so it works reliably.
+# -------------------------------------------------
+def render_bottom_nav(selected_page):
+    # Build buttons in HTML. Clicking changes URL query param; Streamlit reruns.
+    btns = []
+    for name in PAGES:
+        key = PAGE_KEYS.get(name, "home")
+        sel = " sel" if name == selected_page else ""
+        btns.append(
+            '<button class="navbtn' + sel + '" onclick="window.location.search=\'?page=' + key + '\'">' +
+            name +
+            '</button>'
+        )
+
+    html = (
+        '<div class="fishy-bottom-nav">'
+        '  <div class="fishy-bottom-inner">'
+        + "".join(btns) +
+        '  </div>'
+        '</div>'
+    )
+    components.html(html, height=80)
+
+render_bottom_nav(page)
