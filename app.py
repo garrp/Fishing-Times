@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.9.2
+# Version 1.9.3
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -9,12 +9,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.9.2"
+APP_VERSION = "1.9.3"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.9.2",
+    "User-Agent": "FishyNW-App-1.9.3",
     "Accept": "application/json",
 }
 
@@ -33,7 +33,7 @@ st.set_page_config(
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
-# Shared saved location
+# Shared saved location (used by Best Times + Wind)
 if "loc_lat" not in st.session_state:
     st.session_state["loc_lat"] = None
 if "loc_lon" not in st.session_state:
@@ -41,25 +41,69 @@ if "loc_lon" not in st.session_state:
 if "loc_label" not in st.session_state:
     st.session_state["loc_label"] = ""
 
+# Show/hide location panel (for the big "Set Location" button)
+if "show_location" not in st.session_state:
+    st.session_state["show_location"] = False
+
 # -------------------------------------------------
-# CSS
+# CSS (includes sticky top bar)
 # -------------------------------------------------
 st.markdown(
     """
 <style>
-.block-container { max-width: 860px; padding-top: 1.05rem; padding-bottom: 4.0rem; }
+.block-container {
+  max-width: 920px;
+  padding-top: 0.75rem;
+  padding-bottom: 4.0rem;
+}
+
+/* Sticky top bar */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  padding: 10px 10px 8px 10px;
+  margin: -0.75rem -0.5rem 10px -0.5rem;
+  border-bottom: 1px solid rgba(0,0,0,0.14);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(8px);
+}
+@media (prefers-color-scheme: dark) {
+  .topbar {
+    background: rgba(15,15,15,0.88);
+    border-bottom: 1px solid rgba(255,255,255,0.16);
+  }
+}
+
+/* header */
+.header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.logo img {
+  width: 100%;
+  max-width: 250px;
+  height: auto;
+  display:block;
+}
+@media (max-width: 520px){
+  .logo img { max-width: 68vw; }
+}
+.version {
+  font-weight: 900;
+  font-size: 0.95rem;
+  opacity: 0.85;
+  text-align:right;
+  white-space: nowrap;
+}
 
 .small { opacity: 0.86; font-size: 0.95rem; }
 .muted { opacity: 0.78; }
 
-.header {
-  display:flex; align-items:center; justify-content:space-between;
-  gap: 16px; margin-top: 6px; margin-bottom: 10px;
-}
-.logo img { width: 100%; max-width: 270px; height: auto; display:block; }
-@media (max-width: 520px){ .logo img { max-width: 72vw; } }
-.version { font-weight: 800; font-size: 0.95rem; opacity: 0.85; text-align:right; }
-
+/* Cards */
 .card {
   border-radius: 18px;
   padding: 16px;
@@ -70,16 +114,16 @@ st.markdown(
 @media (prefers-color-scheme: dark) {
   .card { border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.06); }
 }
-
-.card-title { font-weight: 800; margin-bottom: 6px; }
-.kpi { font-size: 1.7rem; font-weight: 900; line-height: 1.0; }
+.card-title { font-weight: 900; margin-bottom: 6px; }
+.kpi { font-size: 1.7rem; font-weight: 950; line-height: 1.0; }
 .kpi-sub { opacity: 0.86; margin-top: 6px; }
 
+/* Buttons (Fishy light green) */
 div.stButton > button, button[kind="primary"] {
   background-color: #8fd19e !important;
   color: #0b2e13 !important;
   border: 1px solid #6fbf87 !important;
-  font-weight: 900 !important;
+  font-weight: 950 !important;
   border-radius: 12px !important;
   min-height: 48px !important;
 }
@@ -93,11 +137,13 @@ div.stButton > button:disabled {
   border-color: #b6d6c1 !important;
 }
 
+/* Inputs a little taller for mobile */
 div[data-baseweb="input"] input,
 div[data-baseweb="select"] > div {
   min-height: 46px !important;
 }
 
+/* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
@@ -138,7 +184,7 @@ def norm(s):
     return " ".join(s.strip().split())
 
 # -------------------------------------------------
-# Location and APIs
+# Location + APIs
 # -------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def ip_location():
@@ -228,16 +274,18 @@ def winds(lat, lon):
         by_time = {}
         for t, s in zip(data["hourly"]["time"], data["hourly"]["wind_speed_10m"]):
             by_time[t] = round(float(s), 1)
+
         cur_dt = None
+        cur_mph = None
         try:
             cur_dt = datetime.fromisoformat(data.get("current", {}).get("time"))
         except Exception:
             cur_dt = None
-        cur_mph = None
         try:
             cur_mph = round(float(data.get("current", {}).get("wind_speed_10m")), 1)
         except Exception:
             cur_mph = None
+
         return by_time, cur_dt, cur_mph
     except Exception:
         return {}, None, None
@@ -522,7 +570,7 @@ def species_db():
         },
     }
 
-def render_species(name, info):
+def render_species(species, info):
     lo, hi = info.get("temp_f", (None, None))
     depths = info.get("Depths", [])
     baits = info.get("Baits", [])
@@ -569,7 +617,7 @@ def render_species(name, info):
         section("Quick tips", "Quick")
 
 # -------------------------------------------------
-# Location panel (key-prefixed so it can appear multiple times safely)
+# Location UI helpers (key-prefixed: no duplicate key errors)
 # -------------------------------------------------
 def set_location(lat, lon, label):
     st.session_state["loc_lat"] = lat
@@ -622,14 +670,17 @@ def location_panel(prefix):
     if matches:
         labels = [m["label"] for m in matches]
         choice = st.selectbox("Choose a match", labels, index=0, key=prefix + "_choice")
+
         chosen = None
         for m in matches:
             if m["label"] == choice:
                 chosen = m
                 break
+
         if chosen:
             if st.button("Save this location", use_container_width=True, key=prefix + "_save"):
                 set_location(chosen["lat"], chosen["lon"], chosen["label"])
+                st.session_state["show_location"] = False
                 st.success("Saved location: " + chosen["label"])
 
     if do_auto:
@@ -638,6 +689,7 @@ def location_panel(prefix):
             st.warning("Could not detect your location. Try searching by place name or ZIP.")
         else:
             set_location(lat2, lon2, "Approximate location")
+            st.session_state["show_location"] = False
             st.success("Saved approximate location.")
 
     c3, c4 = st.columns(2)
@@ -648,7 +700,9 @@ def location_panel(prefix):
             st.session_state[place_key] = ""
             st.success("Cleared.")
     with c4:
-        st.write("")
+        if st.button("Done", use_container_width=True, key=prefix + "_done"):
+            st.session_state["show_location"] = False
+            st.rerun()
 
 # -------------------------------------------------
 # Navigation
@@ -660,8 +714,10 @@ def go(page_name):
     st.rerun()
 
 # -------------------------------------------------
-# Header
+# Sticky top bar: logo + version + Set Location + nav
 # -------------------------------------------------
+st.markdown("<div class='topbar'>", unsafe_allow_html=True)
+
 st.markdown(
     "<div class='header'>"
     "<div class='logo'><img src='" + LOGO_URL + "'></div>"
@@ -670,7 +726,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Top nav (reliable)
+# Big Set Location button in the top bar (works everywhere)
+top_cols = st.columns([1, 1])
+with top_cols[0]:
+    if st.button("Set Location", use_container_width=True, key="top_set_location"):
+        st.session_state["show_location"] = True
+        st.rerun()
+with top_cols[1]:
+    # Quick status line
+    label, _, _ = location_status()
+    st.markdown("<div class='small muted' style='text-align:right;'>Using: <strong>" + label + "</strong></div>", unsafe_allow_html=True)
+
 current_page = st.session_state.get("page", "Home")
 try:
     nav_index = PAGES.index(current_page)
@@ -689,7 +755,16 @@ if nav_choice != current_page:
     st.session_state["page"] = nav_choice
     st.rerun()
 
+st.markdown("</div>", unsafe_allow_html=True)
+
 page = st.session_state.get("page", "Home")
+
+# -------------------------------------------------
+# Optional inline location panel (triggered by Set Location)
+# -------------------------------------------------
+if st.session_state.get("show_location"):
+    st.markdown("## Set location")
+    location_panel("inline")
 
 # -------------------------------------------------
 # Pages
@@ -698,7 +773,13 @@ if page == "Home":
     st.markdown("## Quick start")
     st.markdown("<div class='small'>Set your location once, then use Best Times or Wind.</div>", unsafe_allow_html=True)
 
-    location_panel("home")
+    if not st.session_state.get("show_location"):
+        st.markdown(
+            "<div class='card'><div class='card-title'>Location (shared)</div>"
+            "<div class='small'>Tap <strong>Set Location</strong> above to set it once for Best Times and Wind.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
     st.markdown("## Tools")
     if st.button("Best Times", use_container_width=True, key="home_btn_best"):
@@ -712,17 +793,6 @@ if page == "Home":
     if st.button("Speed", use_container_width=True, key="home_btn_speed"):
         go("Speed")
 
-    st.markdown(
-        "<div class='card'><div class='card-title'>How this app works</div>"
-        "<div class='small'><ul>"
-        "<li><strong>Best Times</strong> uses sunrise and sunset to show bite windows.</li>"
-        "<li><strong>Wind</strong> shows current and upcoming wind speeds.</li>"
-        "<li><strong>Depth</strong> estimates trolling depth from speed, weight, and line.</li>"
-        "<li><strong>Speed</strong> uses your phone GPS inside the page.</li>"
-        "</ul></div></div>",
-        unsafe_allow_html=True,
-    )
-
 elif page == "Best Times":
     st.markdown("## Best fishing times")
     st.markdown("<div class='small'>Morning and evening windows around sunrise and sunset.</div>", unsafe_allow_html=True)
@@ -735,9 +805,6 @@ elif page == "Best Times":
         unsafe_allow_html=True,
     )
 
-    with st.expander("Change location", expanded=False):
-        location_panel("bt")
-
     st.markdown("### Date range")
     c1, c2 = st.columns(2)
     with c1:
@@ -748,7 +815,7 @@ elif page == "Best Times":
     if end_day < start_day:
         st.warning("End date must be the same as or after start date.")
     elif lat is None or lon is None:
-        st.info("Set a location first (Home) or use the Change location expander.")
+        st.info("Tap Set Location at the top first.")
     else:
         days = []
         cur = start_day
@@ -799,11 +866,8 @@ elif page == "Wind":
         unsafe_allow_html=True,
     )
 
-    with st.expander("Change location", expanded=False):
-        location_panel("wind")
-
     if lat is None or lon is None:
-        st.info("Set a location first (Home) or use the Change location expander.")
+        st.info("Tap Set Location at the top first.")
     else:
         by_time, cur_dt, cur_mph = winds(lat, lon)
         cur_list, fut_list = split_winds(by_time, cur_dt)
