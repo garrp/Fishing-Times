@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.9.1
+# Version 1.9.2
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -9,12 +9,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.9.1"
+APP_VERSION = "1.9.2"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.9.1",
+    "User-Agent": "FishyNW-App-1.9.2",
     "Accept": "application/json",
 }
 
@@ -30,10 +30,10 @@ st.set_page_config(
 # -------------------------------------------------
 # State
 # -------------------------------------------------
-if "tab" not in st.session_state:
-    st.session_state["tab"] = "Home"
+if "page" not in st.session_state:
+    st.session_state["page"] = "Home"
 
-# Shared last-used location (lat/lon + label) so you set it once and all tools reuse it
+# Shared saved location
 if "loc_lat" not in st.session_state:
     st.session_state["loc_lat"] = None
 if "loc_lon" not in st.session_state:
@@ -42,18 +42,16 @@ if "loc_label" not in st.session_state:
     st.session_state["loc_label"] = ""
 
 # -------------------------------------------------
-# CSS (bigger tap targets, clear sections, no sidebar fighting)
+# CSS
 # -------------------------------------------------
 st.markdown(
     """
 <style>
 .block-container { max-width: 860px; padding-top: 1.05rem; padding-bottom: 4.0rem; }
-h1, h2, h3 { letter-spacing: -0.01em; }
+
 .small { opacity: 0.86; font-size: 0.95rem; }
 .muted { opacity: 0.78; }
-hr { margin: 1.0rem 0; }
 
-/* Logo header */
 .header {
   display:flex; align-items:center; justify-content:space-between;
   gap: 16px; margin-top: 6px; margin-bottom: 10px;
@@ -62,7 +60,6 @@ hr { margin: 1.0rem 0; }
 @media (max-width: 520px){ .logo img { max-width: 72vw; } }
 .version { font-weight: 800; font-size: 0.95rem; opacity: 0.85; text-align:right; }
 
-/* Cards */
 .card {
   border-radius: 18px;
   padding: 16px;
@@ -73,11 +70,11 @@ hr { margin: 1.0rem 0; }
 @media (prefers-color-scheme: dark) {
   .card { border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.06); }
 }
+
 .card-title { font-weight: 800; margin-bottom: 6px; }
 .kpi { font-size: 1.7rem; font-weight: 900; line-height: 1.0; }
 .kpi-sub { opacity: 0.86; margin-top: 6px; }
 
-/* Buttons - consistent + big */
 div.stButton > button, button[kind="primary"] {
   background-color: #8fd19e !important;
   color: #0b2e13 !important;
@@ -96,16 +93,11 @@ div.stButton > button:disabled {
   border-color: #b6d6c1 !important;
 }
 
-/* Inputs bigger on mobile */
 div[data-baseweb="input"] input,
 div[data-baseweb="select"] > div {
   min-height: 46px !important;
 }
 
-/* Segmented controls (tabs) spacing */
-div[data-baseweb="tabs"] { margin-top: 8px; }
-
-/* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
@@ -123,7 +115,7 @@ div[data-baseweb="tabs"] { margin-top: 8px; }
 )
 
 # -------------------------------------------------
-# Network helpers (cache + tiny retries for mobile)
+# Network helpers (cache + tiny retry)
 # -------------------------------------------------
 def _get(url, timeout=10):
     last = None
@@ -336,7 +328,7 @@ def speedometer_widget():
     components.html(html, height=250)
 
 # -------------------------------------------------
-# Species tips (same DB, cleaner render)
+# Species tips
 # -------------------------------------------------
 def species_db():
     return {
@@ -536,24 +528,36 @@ def render_species(name, info):
     baits = info.get("Baits", [])
     rigs = info.get("Rigs", [])
 
-    st.markdown("<div class='card'><div class='card-title'>Most active water temp</div>"
-                "<div class='kpi'>" + str(lo) + " to " + str(hi) + " F</div>"
-                "<div class='kpi-sub'>Depth focus: " + ", ".join(depths) + "</div></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='card'><div class='card-title'>Most active water temp</div>"
+        "<div class='kpi'>" + str(lo) + " to " + str(hi) + " F</div>"
+        "<div class='kpi-sub'>Depth focus: " + ", ".join(depths) + "</div></div>",
+        unsafe_allow_html=True,
+    )
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("<div class='card'><div class='card-title'>Popular baits</div><ul>" +
-                    "".join(["<li>" + x + "</li>" for x in baits]) + "</ul></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='card'><div class='card-title'>Popular baits</div><ul>" +
+            "".join(["<li>" + x + "</li>" for x in baits]) + "</ul></div>",
+            unsafe_allow_html=True,
+        )
     with c2:
-        st.markdown("<div class='card'><div class='card-title'>Common rigs</div><ul>" +
-                    "".join(["<li>" + x + "</li>" for x in rigs]) + "</ul></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='card'><div class='card-title'>Common rigs</div><ul>" +
+            "".join(["<li>" + x + "</li>" for x in rigs]) + "</ul></div>",
+            unsafe_allow_html=True,
+        )
 
     def section(title, key):
         items = info.get(key, [])
         if not items:
             return
-        st.markdown("<div class='card'><div class='card-title'>" + title + "</div><ul>" +
-                    "".join(["<li>" + x + "</li>" for x in items]) + "</ul></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='card'><div class='card-title'>" + title + "</div><ul>" +
+            "".join(["<li>" + x + "</li>" for x in items]) + "</ul></div>",
+            unsafe_allow_html=True,
+        )
 
     if "Top" in depths:
         section("Topwater tips", "Top")
@@ -565,7 +569,7 @@ def render_species(name, info):
         section("Quick tips", "Quick")
 
 # -------------------------------------------------
-# Location picker (shared) - FIXED: unique keys per panel instance
+# Location panel (key-prefixed so it can appear multiple times safely)
 # -------------------------------------------------
 def set_location(lat, lon, label):
     st.session_state["loc_lat"] = lat
@@ -582,20 +586,19 @@ def location_status():
         return label, lat, lon
     return "Saved location", lat, lon
 
-def location_panel(key_prefix, compact=False):
-    # All widget keys inside this panel must be unique per call
-    kp = str(key_prefix)
-
-    title = "Location" if not compact else "Location (shared)"
+def location_panel(prefix):
     label, lat, lon = location_status()
 
-    st.markdown("<div class='card'><div class='card-title'>" + title + "</div>"
-                "<div class='small'>Current: <strong>" + label + "</strong></div>"
-                "<div class='small muted' style='margin-top:6px;'>Tip: Set once here. Best Times and Wind will use it.</div>"
-                "</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='card'><div class='card-title'>Location (shared)</div>"
+        "<div class='small'>Current: <strong>" + label + "</strong></div>"
+        "<div class='small muted' style='margin-top:6px;'>Set once here. Best Times and Wind will use it.</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-    place_key = kp + "_place_input"
-    matches_key = kp + "_matches"
+    place_key = prefix + "_place"
+    matches_key = prefix + "_matches"
 
     place = st.text_input(
         "Search by place name or ZIP",
@@ -606,9 +609,9 @@ def location_panel(key_prefix, compact=False):
 
     c1, c2 = st.columns(2)
     with c1:
-        do_search = st.button("Search", use_container_width=True, key=kp + "_search_btn")
+        do_search = st.button("Search", use_container_width=True, key=prefix + "_search")
     with c2:
-        do_auto = st.button("Use my approximate location", use_container_width=True, key=kp + "_auto_btn")
+        do_auto = st.button("Use my approximate location", use_container_width=True, key=prefix + "_auto")
 
     matches = st.session_state.get(matches_key, [])
 
@@ -618,14 +621,14 @@ def location_panel(key_prefix, compact=False):
 
     if matches:
         labels = [m["label"] for m in matches]
-        choice = st.selectbox("Choose a match", labels, index=0, key=kp + "_choice")
+        choice = st.selectbox("Choose a match", labels, index=0, key=prefix + "_choice")
         chosen = None
         for m in matches:
             if m["label"] == choice:
                 chosen = m
                 break
         if chosen:
-            if st.button("Save this location", use_container_width=True, key=kp + "_save_btn"):
+            if st.button("Save this location", use_container_width=True, key=prefix + "_save"):
                 set_location(chosen["lat"], chosen["lon"], chosen["label"])
                 st.success("Saved location: " + chosen["label"])
 
@@ -639,15 +642,22 @@ def location_panel(key_prefix, compact=False):
 
     c3, c4 = st.columns(2)
     with c3:
-        if st.button("Clear location", use_container_width=True, key=kp + "_clear_btn"):
+        if st.button("Clear location", use_container_width=True, key=prefix + "_clear"):
             set_location(None, None, "")
             st.session_state[matches_key] = []
             st.session_state[place_key] = ""
             st.success("Cleared.")
     with c4:
-        if st.button("Home", use_container_width=True, key=kp + "_home_btn"):
-            st.session_state["tab"] = "Home"
-            st.rerun()
+        st.write("")
+
+# -------------------------------------------------
+# Navigation
+# -------------------------------------------------
+PAGES = ["Home", "Best Times", "Wind", "Depth", "Species", "Speed"]
+
+def go(page_name):
+    st.session_state["page"] = page_name
+    st.rerun()
 
 # -------------------------------------------------
 # Header
@@ -660,83 +670,73 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# -------------------------------------------------
-# Primary navigation (tabs)
-# -------------------------------------------------
-tabs = ["Home", "Best Times", "Wind", "Depth", "Species", "Speed"]
-default_tab = st.session_state.get("tab", "Home")
+# Top nav (reliable)
+current_page = st.session_state.get("page", "Home")
 try:
-    default_index = tabs.index(default_tab)
+    nav_index = PAGES.index(current_page)
 except Exception:
-    default_index = 0
+    nav_index = 0
 
-selected = st.tabs(tabs)
+nav_choice = st.radio(
+    "Navigation",
+    PAGES,
+    index=nav_index,
+    horizontal=True,
+    label_visibility="collapsed",
+)
+
+if nav_choice != current_page:
+    st.session_state["page"] = nav_choice
+    st.rerun()
+
+page = st.session_state.get("page", "Home")
 
 # -------------------------------------------------
-# HOME
+# Pages
 # -------------------------------------------------
-with selected[0]:
-    st.session_state["tab"] = "Home"
-
+if page == "Home":
     st.markdown("## Quick start")
-    st.markdown("<div class='small'>Set your location once, then jump into Best Times or Wind.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Set your location once, then use Best Times or Wind.</div>", unsafe_allow_html=True)
 
-    location_panel("home", compact=True)
+    location_panel("home")
 
     st.markdown("## Tools")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("Best Times", use_container_width=True, key="go_bt"):
-            st.session_state["tab"] = "Best Times"
-            st.rerun()
-    with c2:
-        if st.button("Wind", use_container_width=True, key="go_wi"):
-            st.session_state["tab"] = "Wind"
-            st.rerun()
-    with c3:
-        if st.button("Depth", use_container_width=True, key="go_dp"):
-            st.session_state["tab"] = "Depth"
-            st.rerun()
+    if st.button("Best Times", use_container_width=True, key="home_btn_best"):
+        go("Best Times")
+    if st.button("Wind", use_container_width=True, key="home_btn_wind"):
+        go("Wind")
+    if st.button("Depth", use_container_width=True, key="home_btn_depth"):
+        go("Depth")
+    if st.button("Species", use_container_width=True, key="home_btn_species"):
+        go("Species")
+    if st.button("Speed", use_container_width=True, key="home_btn_speed"):
+        go("Speed")
 
-    c4, c5, c6 = st.columns(3)
-    with c4:
-        if st.button("Species", use_container_width=True, key="go_sp"):
-            st.session_state["tab"] = "Species"
-            st.rerun()
-    with c5:
-        if st.button("Speed", use_container_width=True, key="go_sd"):
-            st.session_state["tab"] = "Speed"
-            st.rerun()
-    with c6:
-        pass
+    st.markdown(
+        "<div class='card'><div class='card-title'>How this app works</div>"
+        "<div class='small'><ul>"
+        "<li><strong>Best Times</strong> uses sunrise and sunset to show bite windows.</li>"
+        "<li><strong>Wind</strong> shows current and upcoming wind speeds.</li>"
+        "<li><strong>Depth</strong> estimates trolling depth from speed, weight, and line.</li>"
+        "<li><strong>Speed</strong> uses your phone GPS inside the page.</li>"
+        "</ul></div></div>",
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("<div class='card'><div class='card-title'>How this app works</div>"
-                "<div class='small'>"
-                "<ul>"
-                "<li><strong>Best Times</strong> uses sunrise and sunset to show morning and evening bite windows.</li>"
-                "<li><strong>Wind</strong> shows current and upcoming wind speeds.</li>"
-                "<li><strong>Depth</strong> is a quick estimate for weight, line, and speed.</li>"
-                "<li><strong>Speed</strong> uses your phone GPS inside the page (browser permission required).</li>"
-                "</ul>"
-                "</div></div>", unsafe_allow_html=True)
-
-# -------------------------------------------------
-# BEST TIMES
-# -------------------------------------------------
-with selected[1]:
-    st.session_state["tab"] = "Best Times"
-
+elif page == "Best Times":
     st.markdown("## Best fishing times")
-    st.markdown("<div class='small'>Morning and evening windows around sunrise and sunset. Use the shared location below.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Morning and evening windows around sunrise and sunset.</div>", unsafe_allow_html=True)
 
     label, lat, lon = location_status()
-    st.markdown("<div class='card'><div class='card-title'>Using location</div>"
-                "<div class='kpi' style='font-size:1.15rem;'>" + label + "</div>"
-                "<div class='small muted'>If this is wrong, change it on the Home tab or below.</div>"
-                "</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='card'><div class='card-title'>Using location</div>"
+        "<div class='kpi' style='font-size:1.15rem;'>" + label + "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     with st.expander("Change location", expanded=False):
-        location_panel("best", compact=True)
+        location_panel("bt")
 
     st.markdown("### Date range")
     c1, c2 = st.columns(2)
@@ -748,7 +748,7 @@ with selected[1]:
     if end_day < start_day:
         st.warning("End date must be the same as or after start date.")
     elif lat is None or lon is None:
-        st.info("Set a location first (Home tab) or search in the expander above.")
+        st.info("Set a location first (Home) or use the Change location expander.")
     else:
         days = []
         cur = start_day
@@ -786,27 +786,24 @@ with selected[1]:
                     "</div>",
                     unsafe_allow_html=True,
                 )
-            st.markdown("<hr>", unsafe_allow_html=True)
 
-# -------------------------------------------------
-# WIND
-# -------------------------------------------------
-with selected[2]:
-    st.session_state["tab"] = "Wind"
-
+elif page == "Wind":
     st.markdown("## Wind")
-    st.markdown("<div class='small'>Quick view: current wind plus the next few hours.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Current wind plus the next few hours.</div>", unsafe_allow_html=True)
 
     label, lat, lon = location_status()
-    st.markdown("<div class='card'><div class='card-title'>Using location</div>"
-                "<div class='kpi' style='font-size:1.15rem;'>" + label + "</div>"
-                "</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='card'><div class='card-title'>Using location</div>"
+        "<div class='kpi' style='font-size:1.15rem;'>" + label + "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     with st.expander("Change location", expanded=False):
-        location_panel("wind", compact=True)
+        location_panel("wind")
 
     if lat is None or lon is None:
-        st.info("Set a location first (Home tab) or search in the expander above.")
+        st.info("Set a location first (Home) or use the Change location expander.")
     else:
         by_time, cur_dt, cur_mph = winds(lat, lon)
         cur_list, fut_list = split_winds(by_time, cur_dt)
@@ -815,19 +812,9 @@ with selected[2]:
             st.markdown(
                 "<div class='card'><div class='card-title'>Current wind</div>"
                 "<div class='kpi'>" + str(cur_mph) + " mph</div>"
-                "<div class='small muted'>From Open-Meteo current conditions.</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
-
-        if cur_list:
-            st.markdown("### Recent winds")
-            for label2, mph in cur_list:
-                st.markdown(
-                    "<div class='card'><div class='card-title'>" + label2 + "</div>"
-                    "<div class='kpi' style='font-size:1.4rem;'>" + str(mph) + " mph</div></div>",
-                    unsafe_allow_html=True,
-                )
 
         if fut_list:
             st.markdown("### Next hours")
@@ -838,14 +825,9 @@ with selected[2]:
                     unsafe_allow_html=True,
                 )
 
-# -------------------------------------------------
-# DEPTH
-# -------------------------------------------------
-with selected[3]:
-    st.session_state["tab"] = "Depth"
-
+elif page == "Depth":
     st.markdown("## Trolling depth")
-    st.markdown("<div class='small'>One-screen calculator. Change any value and the depth updates.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Change any value and the estimate updates.</div>", unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -873,14 +855,9 @@ with selected[3]:
             unsafe_allow_html=True,
         )
 
-# -------------------------------------------------
-# SPECIES
-# -------------------------------------------------
-with selected[4]:
-    st.session_state["tab"] = "Species"
-
+elif page == "Species":
     st.markdown("## Species tips")
-    st.markdown("<div class='small'>Pick a species. You get temps, baits, rigs, and depth-specific tips.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Pick a species for temps, baits, rigs, and depth-specific tips.</div>", unsafe_allow_html=True)
 
     db = species_db()
     names = sorted(list(db.keys()))
@@ -895,14 +872,9 @@ with selected[4]:
     if info:
         render_species(species, info)
 
-# -------------------------------------------------
-# SPEED
-# -------------------------------------------------
-with selected[5]:
-    st.session_state["tab"] = "Speed"
-
+elif page == "Speed":
     st.markdown("## Speed")
-    st.markdown("<div class='small'>Live GPS speed from your phone browser. Grant location permission when asked.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Live GPS speed from your phone browser. Grant location permission.</div>", unsafe_allow_html=True)
     speedometer_widget()
 
 # -------------------------------------------------
