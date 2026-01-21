@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools (Mobile)
-# Version 2.0.0
+# Version 2.0.1
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-2.0.0",
+    "User-Agent": "FishyNW-App-2.0.1",
     "Accept": "application/json",
 }
 
@@ -166,14 +166,9 @@ button:disabled {
   padding: 10px 10px;
 }
 @media (prefers-color-scheme: dark) {
-  .bottom-nav {
-    background: rgba(18,18,18,0.96);
-  }
+  .bottom-nav { background: rgba(18,18,18,0.96); }
 }
-.nav-wrap {
-  max-width: 760px;
-  margin: 0 auto;
-}
+.nav-wrap { max-width: 760px; margin: 0 auto; }
 .nav-hint {
   text-align: center;
   font-size: 0.9rem;
@@ -345,11 +340,11 @@ def species_tip_db():
             "Mid": [
                 "Troll dodger plus small hoochie or spinner behind it.",
                 "Run scent and tune speed until you get a steady rod thump.",
-                "If marks are mid column, match depth with weights or a downrigger."
+                "If marks are mid column, match depth with weights or a downrigger.",
             ],
             "Quick": [
                 "Speed is everything. Small changes can turn on the bite.",
-                "If you see fish at 35 ft, set gear at about 30 to 33 ft."
+                "If you see fish at 35 ft, set gear at about 30 to 33 ft.",
             ],
         },
         "Rainbow trout": {
@@ -359,19 +354,19 @@ def species_tip_db():
             "Rigs": ["Cast and retrieve", "Trolling with long leads", "Slip sinker bait rig (near bottom)"],
             "Top": [
                 "When they are up, cast small spinners, spoons, or floating minnows.",
-                "Early morning wind lanes can be strong."
+                "Early morning wind lanes can be strong.",
             ],
             "Mid": [
                 "Troll small spoons or spinners at 1.2 to 1.8 mph.",
-                "Use longer leads if the water is clear."
+                "Use longer leads if the water is clear.",
             ],
             "Bottom": [
                 "Still fish bait just off bottom near structure or drop-offs.",
-                "If snaggy, lift your bait slightly above bottom."
+                "If snaggy, lift your bait slightly above bottom.",
             ],
             "Quick": [
                 "If bites stop, change lure color or adjust speed slightly.",
-                "Follow food and temperature changes."
+                "Follow food and temperature changes.",
             ],
         },
         "Lake trout": {
@@ -381,15 +376,15 @@ def species_tip_db():
             "Rigs": ["Vertical jigging (heavy jig head + tube)", "Deep trolling with weights or downrigger"],
             "Mid": [
                 "If bait is suspended, troll big spoons or tubes through the marks.",
-                "Wide turns often trigger strikes."
+                "Wide turns often trigger strikes.",
             ],
             "Bottom": [
                 "Work structure: humps, points, deep breaks.",
-                "Jig heavy tubes or blade baits on bottom, then lift and drop."
+                "Jig heavy tubes or blade baits on bottom, then lift and drop.",
             ],
             "Quick": [
                 "Often tight to bottom. Fish within a few feet of it.",
-                "When you find one, stay on that contour."
+                "When you find one, stay on that contour.",
             ],
         },
         "Chinook salmon": {
@@ -400,15 +395,15 @@ def species_tip_db():
             "Mid": [
                 "Troll flasher plus hoochie or spoon.",
                 "Adjust leader length until action looks right.",
-                "Make long straight passes with gentle S turns."
+                "Make long straight passes with gentle S turns.",
             ],
             "Bottom": [
                 "If they are hugging bottom, run just above them to avoid snagging.",
-                "Use your sonar to stay off bottom and repeat productive passes."
+                "Use your sonar to stay off bottom and repeat productive passes.",
             ],
             "Quick": [
                 "Speed and depth control are the game.",
-                "Repeat the depth and speed that got your bite."
+                "Repeat the depth and speed that got your bite.",
             ],
         },
         "Smallmouth bass": {
@@ -418,19 +413,19 @@ def species_tip_db():
             "Rigs": ["Ned rig", "Drop shot", "Tube jig"],
             "Top": [
                 "Walking baits and poppers early and late.",
-                "Wind on points can make topwater fire."
+                "Wind on points can make topwater fire.",
             ],
             "Mid": [
                 "Jerkbaits and swimbaits around rocks and shade.",
-                "Slow down on cold fronts."
+                "Slow down on cold fronts.",
             ],
             "Bottom": [
                 "Ned rig, tube, drop shot on rock and breaks.",
-                "If you feel rock and gravel, you are in the zone."
+                "If you feel rock and gravel, you are in the zone.",
             ],
             "Quick": [
                 "Follow wind. It pushes bait and turns on feeding.",
-                "After a miss, throw a Ned or drop shot back."
+                "After a miss, throw a Ned or drop shot back.",
             ],
         },
         "Largemouth bass": {
@@ -440,19 +435,19 @@ def species_tip_db():
             "Rigs": ["Texas rig", "Swim jig", "Pitching jig"],
             "Top": [
                 "Frog and buzzbait around weeds and shade lines.",
-                "Target calm pockets in vegetation."
+                "Target calm pockets in vegetation.",
             ],
             "Mid": [
                 "Swim jig or paddletail along weed edges.",
-                "Flip soft plastics into holes and let it fall."
+                "Flip soft plastics into holes and let it fall.",
             ],
             "Bottom": [
                 "Texas rig and jig in thick cover and along drop-offs.",
-                "Slow down when pressured."
+                "Slow down when pressured.",
             ],
             "Quick": [
                 "Shade is a magnet: docks, reeds, mats.",
-                "Dirty water: go louder and bigger."
+                "Dirty water: go louder and bigger.",
             ],
         },
         "Walleye": {
@@ -462,15 +457,15 @@ def species_tip_db():
             "Rigs": ["Jig and soft plastic", "Bottom bouncer + harness (where used)", "Trolling crankbaits on breaks"],
             "Mid": [
                 "Troll crankbaits along breaks at dusk and dawn.",
-                "If suspended, match that depth and keep moving."
+                "If suspended, match that depth and keep moving.",
             ],
             "Bottom": [
                 "Jig near bottom on transitions and edges.",
-                "Slow roll a blade bait near bottom when fish are active."
+                "Slow roll a blade bait near bottom when fish are active.",
             ],
             "Quick": [
                 "Low light is best: early, late, cloudy.",
-                "Stay on transitions: flats to deep breaks."
+                "Stay on transitions: flats to deep breaks.",
             ],
         },
         "Perch": {
@@ -480,15 +475,15 @@ def species_tip_db():
             "Rigs": ["Small jighead + bait", "Dropper loop with small hook (where used)"],
             "Mid": [
                 "Small jigs tipped with bait, slowly swum through schools.",
-                "If you find one, there are usually more."
+                "If you find one, there are usually more.",
             ],
             "Bottom": [
                 "Vertical jig small baits on bottom.",
-                "Use light line and small hooks."
+                "Use light line and small hooks.",
             ],
             "Quick": [
                 "Soft bottom near weeds can be good.",
-                "When you mark a school, hold position and pick them off."
+                "When you mark a school, hold position and pick them off.",
             ],
         },
         "Bluegill": {
@@ -499,7 +494,7 @@ def species_tip_db():
             "Top": ["Tiny poppers can work in summer near shade and cover."],
             "Mid": [
                 "Small jigs under a float with slow retrieves and pauses.",
-                "Downsize until you get consistent bites."
+                "Downsize until you get consistent bites.",
             ],
             "Quick": ["Beds: fish edges gently. Light line and small hooks matter."],
         },
@@ -511,7 +506,7 @@ def species_tip_db():
             "Bottom": [
                 "Soak bait on scent trails: cut bait, worms, stink bait.",
                 "Target holes, outside bends, slow water near current.",
-                "Reset to fresh bait if it goes quiet."
+                "Reset to fresh bait if it goes quiet.",
             ],
             "Quick": ["Evening and night are prime. Let them load the rod before setting hook."],
         },
@@ -665,7 +660,7 @@ def phone_speedometer_widget():
     components.html(html, height=240)
 
 # -------------------------------------------------
-# UI: header + navigation (no sidebar, no redundancy)
+# Navigation (BOTTOM ONLY - NO DUPLICATE BUTTONS)
 # -------------------------------------------------
 TOOL_LABELS = ["Times", "Wind", "Depth", "Tips", "Speed"]
 
@@ -689,23 +684,13 @@ def render_header():
         unsafe_allow_html=True,
     )
 
-def render_top_nav():
-    c1, c2, c3, c4, c5 = st.columns(5)
-    cols = [c1, c2, c3, c4, c5]
-    for i in range(len(TOOL_LABELS)):
-        with cols[i]:
-            if st.button(TOOL_LABELS[i], use_container_width=True, key="topnav_" + TOOL_LABELS[i]):
-                set_tool(TOOL_LABELS[i])
-                st.rerun()
-
 def render_bottom_nav():
-    # Fixed bar with real Streamlit buttons layered in a container
     st.markdown("<div class='bottom-nav'><div class='nav-wrap'>", unsafe_allow_html=True)
     c1, c2, c3, c4, c5 = st.columns(5)
     cols = [c1, c2, c3, c4, c5]
     for i in range(len(TOOL_LABELS)):
         with cols[i]:
-            if st.button(TOOL_LABELS[i], use_container_width=True, key="botnav_" + TOOL_LABELS[i]):
+            if st.button(TOOL_LABELS[i], use_container_width=True, key="nav_" + TOOL_LABELS[i]):
                 set_tool(TOOL_LABELS[i])
                 st.rerun()
     st.markdown("<div class='nav-hint'>Tap a tool. No sidebar.</div>", unsafe_allow_html=True)
@@ -715,14 +700,13 @@ def render_bottom_nav():
 # App shell
 # -------------------------------------------------
 render_header()
-render_top_nav()
-st.markdown("<div class='small'>Tip: Enter a place name or ZIP. Leave blank to use your current location.</div>", unsafe_allow_html=True)
+st.markdown("<div class='small'>Enter a place name or ZIP, or leave blank to use your current location.</div>", unsafe_allow_html=True)
 st.markdown("")
 
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
-# TIMES (single Go button, no redundant search buttons)
+# TIMES
 # -------------------------------------------------
 if tool == "Times":
     st.markdown("### Location and dates")
@@ -746,7 +730,6 @@ if tool == "Times":
     if go:
         q = normalize_place_query(place)
 
-        # If they typed a place, use geocoding. Otherwise try IP location.
         if q:
             matches = geocode_search(q, count=10)
             st.session_state["times_matches"] = matches
@@ -763,7 +746,6 @@ if tool == "Times":
             st.session_state["lat"], st.session_state["lon"] = get_location()
             st.session_state["times_display"] = ""
 
-    # If multiple matches, allow quick correction without extra buttons
     matches = st.session_state.get("times_matches") or []
     if matches:
         labels = [m["label"] for m in matches]
@@ -833,7 +815,7 @@ if tool == "Times":
             )
 
 # -------------------------------------------------
-# WIND (single Go button, no redundant search buttons)
+# WIND
 # -------------------------------------------------
 elif tool == "Wind":
     st.markdown("### Wind forecast")
