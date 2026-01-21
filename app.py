@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools (Mobile)
-# Version 2.0.1
+# Version 2.0.2
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-2.0.1",
+    "User-Agent": "FishyNW-App-2.0.2",
     "Accept": "application/json",
 }
 
@@ -660,9 +660,10 @@ def phone_speedometer_widget():
     components.html(html, height=240)
 
 # -------------------------------------------------
-# Navigation (BOTTOM ONLY - NO DUPLICATE BUTTONS)
+# Navigation (BOTTOM ONLY)
+# Hide the button for the current page.
 # -------------------------------------------------
-TOOL_LABELS = ["Times", "Wind", "Depth", "Tips", "Speed"]
+TOOL_LABELS = [("Times", "Times"), ("Wind", "Wind"), ("Depth", "Depth"), ("Tips", "Tips"), ("Speed", "Speed")]
 
 def set_tool(name):
     st.session_state["tool"] = name
@@ -684,16 +685,21 @@ def render_header():
         unsafe_allow_html=True,
     )
 
-def render_bottom_nav():
+def render_bottom_nav(active_tool):
     st.markdown("<div class='bottom-nav'><div class='nav-wrap'>", unsafe_allow_html=True)
-    c1, c2, c3, c4, c5 = st.columns(5)
-    cols = [c1, c2, c3, c4, c5]
-    for i in range(len(TOOL_LABELS)):
+
+    cols = st.columns(5)
+    for i, (label, name) in enumerate(TOOL_LABELS):
         with cols[i]:
-            if st.button(TOOL_LABELS[i], use_container_width=True, key="nav_" + TOOL_LABELS[i]):
-                set_tool(TOOL_LABELS[i])
-                st.rerun()
-    st.markdown("<div class='nav-hint'>Tap a tool. No sidebar.</div>", unsafe_allow_html=True)
+            if name == active_tool:
+                st.markdown("<div class='small' style='text-align:center; font-weight:800; opacity:0.85; padding-top:10px;'>"
+                            + label + "</div>", unsafe_allow_html=True)
+            else:
+                if st.button(label, use_container_width=True, key="nav_" + label):
+                    set_tool(name)
+                    st.rerun()
+
+    st.markdown("<div class='nav-hint'>Tap a tool. Current page is not a button.</div>", unsafe_allow_html=True)
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 # -------------------------------------------------
@@ -954,7 +960,7 @@ else:
 # -------------------------------------------------
 # Bottom navigation + footer
 # -------------------------------------------------
-render_bottom_nav()
+render_bottom_nav(tool)
 
 st.markdown(
     "<div style='text-align:center; margin-top:18px; opacity:0.88; font-size:0.95rem;'>"
