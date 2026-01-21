@@ -27,6 +27,110 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
+# Session defaults (MUST be before sidebar CSS logic)
+# -------------------------------------------------
+if "tool" not in st.session_state:
+    st.session_state["tool"] = "Home"
+
+# nav_mode:
+# - "home": hide sidebar entirely, show buttons on landing page
+# - "sidebar": show sidebar navigation
+if "nav_mode" not in st.session_state:
+    st.session_state["nav_mode"] = "home"
+
+if "lat" not in st.session_state:
+    st.session_state["lat"] = None
+if "lon" not in st.session_state:
+    st.session_state["lon"] = None
+if "best_go" not in st.session_state:
+    st.session_state["best_go"] = False
+
+if "best_place" not in st.session_state:
+    st.session_state["best_place"] = ""
+if "best_place_matches" not in st.session_state:
+    st.session_state["best_place_matches"] = []
+if "best_place_choice" not in st.session_state:
+    st.session_state["best_place_choice"] = ""
+if "best_place_display" not in st.session_state:
+    st.session_state["best_place_display"] = ""
+
+if "wind_place" not in st.session_state:
+    st.session_state["wind_place"] = ""
+if "wind_place_matches" not in st.session_state:
+    st.session_state["wind_place_matches"] = []
+if "wind_place_choice" not in st.session_state:
+    st.session_state["wind_place_choice"] = ""
+if "wind_place_display" not in st.session_state:
+    st.session_state["wind_place_display"] = ""
+
+# -------------------------------------------------
+# Sidebar show/hide (RELIABLE - multiple selectors)
+# -------------------------------------------------
+def apply_sidebar_visibility():
+    hide = (st.session_state.get("nav_mode", "home") == "home")
+
+    if hide:
+        st.markdown(
+            """
+<style>
+/* Hide sidebar across Streamlit DOM variants */
+section[data-testid="stSidebar"],
+aside[data-testid="stSidebar"],
+div[data-testid="stSidebar"],
+[data-testid="stSidebar"] {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+}
+
+/* Hide the little expand/collapse control(s) across variants */
+div[data-testid="collapsedControl"],
+div[data-testid="stSidebarCollapsedControl"],
+button[data-testid="collapsedControl"],
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Some builds wrap the sidebar in a "stSidebar" container */
+.stSidebar {
+  display: none !important;
+  width: 0 !important;
+}
+
+/* Ensure main content uses full width */
+.block-container { max-width: 720px; }
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+<style>
+/* Ensure sidebar is visible in tool mode */
+section[data-testid="stSidebar"],
+aside[data-testid="stSidebar"],
+div[data-testid="stSidebar"],
+[data-testid="stSidebar"] {
+  display: block !important;
+  visibility: visible !important;
+  width: 320px !important;
+  min-width: 320px !important;
+  max-width: 320px !important;
+}
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+
+# IMPORTANT: apply visibility CSS early on every run
+apply_sidebar_visibility()
+
+# -------------------------------------------------
 # Styles (neutral + light green buttons with contrast)
 # -------------------------------------------------
 st.markdown(
@@ -37,7 +141,6 @@ st.markdown(
   padding-bottom: 3.25rem;
   max-width: 720px;
 }
-section[data-testid="stSidebar"] { width: 320px; }
 
 /* Header */
 .header-row {
@@ -114,9 +217,7 @@ section[data-testid="stSidebar"] { width: 320px; }
 .bul { margin-top: 8px; }
 .bul li { margin-bottom: 6px; }
 
-/* -------------------------------------------------
-   Global button styling (light green, high contrast)
-------------------------------------------------- */
+/* Global button styling (light green, high contrast) */
 button[kind="primary"],
 button,
 div.stButton > button {
@@ -160,34 +261,6 @@ def normalize_place_query(s):
     s = "" if s is None else str(s)
     s = " ".join(s.strip().split())
     return s
-
-# -------------------------------------------------
-# Sidebar show/hide (RELIABLE)
-# -------------------------------------------------
-def apply_sidebar_visibility():
-    hide = (st.session_state.get("nav_mode", "home") == "home")
-    if hide:
-        st.markdown(
-            """
-<style>
-/* Hide the entire sidebar when on Home */
-section[data-testid="stSidebar"] { display: none !important; }
-div[data-testid="collapsedControl"] { display: none !important; }
-</style>
-""",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            """
-<style>
-/* Show sidebar when in tools mode */
-section[data-testid="stSidebar"] { display: block !important; }
-div[data-testid="collapsedControl"] { display: block !important; }
-</style>
-""",
-            unsafe_allow_html=True,
-        )
 
 # -------------------------------------------------
 # Location / Geocoding
@@ -379,7 +452,7 @@ def inject_wiggle_button(button_text, delay_ms=5000):
     )
 
 # -------------------------------------------------
-# Species tips database (depth-aware) + baits + rigs
+# Species tips
 # -------------------------------------------------
 def species_tip_db():
     return {
@@ -726,45 +799,6 @@ def render_header(title, centered=False):
         unsafe_allow_html=True,
     )
 
-# -------------------------------------------------
-# Session defaults
-# -------------------------------------------------
-if "tool" not in st.session_state:
-    st.session_state["tool"] = "Home"
-if "lat" not in st.session_state:
-    st.session_state["lat"] = None
-if "lon" not in st.session_state:
-    st.session_state["lon"] = None
-if "best_go" not in st.session_state:
-    st.session_state["best_go"] = False
-
-if "best_place" not in st.session_state:
-    st.session_state["best_place"] = ""
-if "best_place_matches" not in st.session_state:
-    st.session_state["best_place_matches"] = []
-if "best_place_choice" not in st.session_state:
-    st.session_state["best_place_choice"] = ""
-if "best_place_display" not in st.session_state:
-    st.session_state["best_place_display"] = ""
-
-if "wind_place" not in st.session_state:
-    st.session_state["wind_place"] = ""
-if "wind_place_matches" not in st.session_state:
-    st.session_state["wind_place_matches"] = []
-if "wind_place_choice" not in st.session_state:
-    st.session_state["wind_place_choice"] = ""
-if "wind_place_display" not in st.session_state:
-    st.session_state["wind_place_display"] = ""
-
-# Navigation mode:
-# - "home": show ALL tool buttons on Home page and hide sidebar
-# - "sidebar": show sidebar buttons when user is inside a tool
-if "nav_mode" not in st.session_state:
-    st.session_state["nav_mode"] = "home"
-
-# Apply sidebar visibility BEFORE rendering sidebar
-apply_sidebar_visibility()
-
 PAGE_TITLES = {
     "Home": "",
     "Best fishing times": "Best Fishing Times",
@@ -776,14 +810,12 @@ PAGE_TITLES = {
 
 def nav_to(tool_name):
     st.session_state["tool"] = tool_name
-
     if tool_name == "Home":
         st.session_state["nav_mode"] = "home"
-        return
-
-    st.session_state["nav_mode"] = "sidebar"
-    if tool_name == "Best fishing times":
-        st.session_state["best_go"] = False
+    else:
+        st.session_state["nav_mode"] = "sidebar"
+        if tool_name == "Best fishing times":
+            st.session_state["best_go"] = False
 
 tool = st.session_state["tool"]
 
@@ -1134,7 +1166,6 @@ elif tool == "Species tips":
         default_index = 0
 
     species = st.selectbox("Species", species_list, index=default_index)
-
     render_species_tips(species, db)
 
 else:
