@@ -4,7 +4,6 @@
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
-import uuid
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
@@ -145,25 +144,6 @@ section[data-testid="stSidebar"] { width: 320px; }
 .home-center .header-logo { max-width: 100%; margin: 0 auto; }
 .home-center .header-logo img { max-width: 92vw; }
 
-/* Consent screen logo area */
-.consent-logo-full {
-  width: 100%;
-  height: 72vh;
-  margin-top: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(0,0,0,0.14);
-  background: rgba(0,0,0,0.02);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.consent-logo-full img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 /* Lists */
 .tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
@@ -215,94 +195,9 @@ def get_json(url, timeout=10):
     return r.json()
 
 def normalize_place_query(s):
-    # Make matching easier for users:
-    # - trim
-    # - collapse extra spaces
-    # - keep punctuation (commas help disambiguate)
-    # - DO NOT force case on the wire; server is already case-insensitive,
-    #   but we normalize for consistency and caching.
     s = "" if s is None else str(s)
     s = " ".join(s.strip().split())
     return s
-
-# -------------------------------------------------
-# Analytics consent banner (session-only)
-# -------------------------------------------------
-def analytics_consent_required():
-    return "analytics_consent" not in st.session_state
-
-def analytics_allowed():
-    return st.session_state.get("analytics_consent") == "accepted"
-
-def render_analytics_consent_banner():
-    st.markdown(
-        """
-<div class="card" style="margin-top:8px;">
-  <div style="font-weight:800;font-size:1.05rem;margin-bottom:6px;">Analytics notice</div>
-  <div style="opacity:0.88;">
-    This app can send anonymous usage analytics to help improve the tools and performance.
-    No personal information is collected.
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Accept analytics", use_container_width=True, key="consent_accept"):
-            st.session_state["analytics_consent"] = "accepted"
-            st.rerun()
-    with c2:
-        if st.button("Decline analytics", use_container_width=True, key="consent_decline"):
-            st.session_state["analytics_consent"] = "declined"
-            st.rerun()
-
-    st.markdown(
-        "<div class='consent-logo-full'><img src='" + LOGO_URL + "' alt='FishyNW Logo'></div>",
-        unsafe_allow_html=True,
-    )
-
-# -------------------------------------------------
-# GA4 (server-side) analytics - Streamlit Community Cloud safe
-# Uses GA4 Measurement Protocol
-# -------------------------------------------------
-def ga_get_client_id():
-    if "ga_client_id" not in st.session_state:
-        st.session_state["ga_client_id"] = str(uuid.uuid4())
-    return st.session_state["ga_client_id"]
-
-def ga_send_event(event_name, params=None, debug=False):
-    try:
-        enabled = bool(st.secrets.get("GA_ENABLED", True))
-        if (not enabled) or (not analytics_allowed()):
-            return
-
-        mid = str(st.secrets.get("GA_MEASUREMENT_ID", "")).strip()
-        secret = str(st.secrets.get("GA_API_SECRET", "")).strip()
-        if not mid or not secret:
-            return
-
-        if params is None:
-            params = {}
-
-        payload = {
-            "client_id": ga_get_client_id(),
-            "events": [
-                {
-                    "name": str(event_name),
-                    "params": params,
-                }
-            ],
-        }
-
-        base = "https://www.google-analytics.com"
-        path = "/debug/mp/collect" if debug else "/mp/collect"
-        url = base + path + "?measurement_id=" + mid + "&api_secret=" + secret
-
-        requests.post(url, json=payload, timeout=3)
-    except Exception:
-        return
 
 # -------------------------------------------------
 # Location / Geocoding
@@ -318,9 +213,7 @@ def get_location():
     except Exception:
         return None, None
 
-def geocode_search(place_name, count=8):
-    # Open-Meteo geocoding (no key)
-    # Server-side matching is case-insensitive, but we normalize spaces/punctuation for users.
+def geocode_search(place_name, count=10):
     try:
         q = normalize_place_query(place_name)
         if not q:
@@ -352,13 +245,7 @@ def geocode_search(place_name, count=8):
                 parts.append(country)
 
             display = ", ".join(parts)
-            out.append(
-                {
-                    "label": display,
-                    "lat": float(lat),
-                    "lon": float(lon),
-                }
-            )
+            out.append({"label": display, "lat": float(lat), "lon": float(lon)})
 
         return out
     except Exception:
@@ -662,7 +549,7 @@ def species_tip_db():
         },
         "Bluegill": {
             "temp_f": (65, 80),
-            "Depths": ["Top", "Mid"],
+            "Depths": ["Top, Mid"],
             "Baits": ["Tiny poppers", "Small jigs", "Worm pieces", "Micro plastics"],
             "Rigs": ["Float + small jig/hook", "Ultralight jighead"],
             "Top": ["Tiny poppers can work in summer near shade and cover."],
@@ -885,20 +772,6 @@ if "wind_place_display" not in st.session_state:
 if "nav_mode" not in st.session_state:
     st.session_state["nav_mode"] = "home"
 
-# -------------------------------------------------
-# Consent gate (must happen before analytics events)
-# -------------------------------------------------
-if analytics_consent_required():
-    render_analytics_consent_banner()
-    st.stop()
-
-# -------------------------------------------------
-# Analytics: app_open once per session (only after consent)
-# -------------------------------------------------
-if "ga_open_sent" not in st.session_state:
-    st.session_state["ga_open_sent"] = True
-    ga_send_event("app_open", {"app_version": APP_VERSION}, debug=False)
-
 PAGE_TITLES = {
     "Home": "",
     "Best fishing times": "Best Fishing Times",
@@ -911,15 +784,12 @@ PAGE_TITLES = {
 def nav_to(tool_name):
     st.session_state["tool"] = tool_name
 
-    # Any tool selection switches nav_mode to sidebar.
-    # Home selection switches nav_mode back to home and collapses sidebar.
     if tool_name == "Home":
         st.session_state["nav_mode"] = "home"
         request_sidebar_collapse()
         return
 
     st.session_state["nav_mode"] = "sidebar"
-
     if tool_name == "Best fishing times":
         st.session_state["best_go"] = False
 
@@ -964,22 +834,10 @@ else:
     run_sidebar_collapse_if_needed()
 
 # -------------------------------------------------
-# Analytics: tool_open when tool changes
-# -------------------------------------------------
-if "ga_last_tool" not in st.session_state:
-    st.session_state["ga_last_tool"] = None
-
-if tool != st.session_state["ga_last_tool"]:
-    st.session_state["ga_last_tool"] = tool
-    ga_send_event("tool_open", {"tool": tool, "app_version": APP_VERSION}, debug=False)
-
-# -------------------------------------------------
 # Home page (landing page with all buttons)
 # -------------------------------------------------
 if tool == "Home":
     render_header("", centered=True)
-
-    st.markdown("<div class='home-menu'></div>", unsafe_allow_html=True)
 
     r1 = st.columns(2)
     with r1[0]:
@@ -1030,7 +888,6 @@ if tool == "Best fishing times":
 
     st.markdown("<div class='small'>Not case sensitive. Leave blank to use your current location.</div>", unsafe_allow_html=True)
 
-    # Search matches button (optional but makes it MUCH easier)
     cA, cB = st.columns(2)
     with cA:
         if st.button("Search place", use_container_width=True, key="best_search_place"):
@@ -1055,16 +912,10 @@ if tool == "Best fishing times":
     inject_wiggle_button("Display Best Fishing Times", 5000)
 
     if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
-        ga_send_event(
-            "action",
-            {"name": "display_best_times", "tool": "Best fishing times", "has_place": bool(place.strip())},
-            debug=False,
-        )
         st.session_state["best_go"] = True
 
         q = normalize_place_query(place)
         if q:
-            # If user already searched and chose, honor that.
             chosen_label = st.session_state.get("best_place_choice", "")
             chosen = None
             for m in matches:
@@ -1072,7 +923,6 @@ if tool == "Best fishing times":
                     chosen = m
                     break
 
-            # If no chosen match, try a fresh search.
             if chosen is None:
                 matches2 = geocode_search(q, count=10)
                 st.session_state["best_place_matches"] = matches2
@@ -1197,12 +1047,6 @@ elif tool == "Wind forecast":
     inject_wiggle_button("Display winds", 5000)
 
     if st.button("Display winds", use_container_width=True, key="go_winds"):
-        ga_send_event(
-            "action",
-            {"name": "display_winds", "tool": "Wind forecast", "has_place": bool(place.strip())},
-            debug=False,
-        )
-
         q = normalize_place_query(place)
         if q:
             chosen_label = st.session_state.get("wind_place_choice", "")
