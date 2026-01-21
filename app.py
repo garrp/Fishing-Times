@@ -1,6 +1,6 @@
 # app.py
 # FishyNW.com - Fishing Tools (Mobile)
-# Version 2.0.2
+# Version 2.0.3
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
@@ -8,12 +8,12 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.0.3"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-2.0.2",
+    "User-Agent": "FishyNW-App-2.0.3",
     "Accept": "application/json",
 }
 
@@ -131,7 +131,7 @@ button[data-testid="collapsedControl"],
 .bul { margin-top: 8px; }
 .bul li { margin-bottom: 6px; }
 
-/* Buttons: light green, high contrast */
+/* Default buttons: light green, high contrast */
 button[kind="primary"],
 div.stButton > button,
 button {
@@ -199,6 +199,62 @@ def normalize_place_query(s):
     s = "" if s is None else str(s)
     s = " ".join(s.strip().split())
     return s
+
+def inject_button_color_by_text(button_text, bg_hex, fg_hex, border_hex, delay_ms=50):
+    # Styles a Streamlit button by exact visible text, using JS (reliable across Streamlit DOM variants).
+    safe_text = button_text.replace("\\", "\\\\").replace('"', '\\"')
+    components.html(
+        """
+<script>
+(function() {
+  var targetText = "%s";
+  var delay = %d;
+  var bg = "%s";
+  var fg = "%s";
+  var border = "%s";
+
+  function styleBtn(btn) {
+    try {
+      btn.style.backgroundColor = bg;
+      btn.style.color = fg;
+      btn.style.border = "1px solid " + border;
+      btn.style.fontWeight = "900";
+      btn.style.borderRadius = "12px";
+    } catch (e) {}
+  }
+
+  function findButton() {
+    try {
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
+      for (var i = 0; i < buttons.length; i++) {
+        var b = buttons[i];
+        var t = (b.innerText || "").trim();
+        if (t === targetText) return b;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  setTimeout(function() {
+    var btn = findButton();
+    if (btn) { styleBtn(btn); return; }
+
+    var tries = 0;
+    var iv = setInterval(function() {
+      tries += 1;
+      var b = findButton();
+      if (b) {
+        clearInterval(iv);
+        styleBtn(b);
+      }
+      if (tries >= 20) clearInterval(iv);
+    }, 200);
+  }, delay);
+})();
+</script>
+""" % (safe_text, int(delay_ms), bg_hex, fg_hex, border_hex),
+        height=0,
+    )
 
 # -------------------------------------------------
 # Location / Geocoding
@@ -692,8 +748,11 @@ def render_bottom_nav(active_tool):
     for i, (label, name) in enumerate(TOOL_LABELS):
         with cols[i]:
             if name == active_tool:
-                st.markdown("<div class='small' style='text-align:center; font-weight:800; opacity:0.85; padding-top:10px;'>"
-                            + label + "</div>", unsafe_allow_html=True)
+                st.markdown(
+                    "<div class='small' style='text-align:center; font-weight:900; opacity:0.85; padding-top:10px;'>"
+                    + label + "</div>",
+                    unsafe_allow_html=True,
+                )
             else:
                 if st.button(label, use_container_width=True, key="nav_" + label):
                     set_tool(name)
@@ -710,6 +769,11 @@ st.markdown("<div class='small'>Enter a place name or ZIP, or leave blank to use
 st.markdown("")
 
 tool = st.session_state["tool"]
+
+# Light red for the "action" buttons on their own pages
+ACTION_BG = "#f4a3a3"
+ACTION_FG = "#3b0a0a"
+ACTION_BORDER = "#e48f8f"
 
 # -------------------------------------------------
 # TIMES
@@ -731,7 +795,10 @@ if tool == "Times":
         with d1:
             end_day = st.date_input("End date", value=date.today(), key="times_end")
 
-        go = st.form_submit_button("Show best fishing times", use_container_width=True)
+        go = st.form_submit_button("Show Best Fishing Times", use_container_width=True)
+
+    # Color that button light red (only on this page)
+    inject_button_color_by_text("Show Best Fishing Times", ACTION_BG, ACTION_FG, ACTION_BORDER, 80)
 
     if go:
         q = normalize_place_query(place)
@@ -835,7 +902,10 @@ elif tool == "Wind":
             placeholder="Example: Los Angeles, CA   or   90001   or   Hayden Lake, Idaho",
         )
         st.session_state["wind_place"] = place
-        go = st.form_submit_button("Show winds", use_container_width=True)
+        go = st.form_submit_button("Show Winds", use_container_width=True)
+
+    # Color that button light red (only on this page)
+    inject_button_color_by_text("Show Winds", ACTION_BG, ACTION_FG, ACTION_BORDER, 80)
 
     if go:
         q = normalize_place_query(place)
@@ -877,7 +947,7 @@ elif tool == "Wind":
         if normalize_place_query(st.session_state.get("wind_place", "")):
             st.warning("Could not find that place. Try City, State or a ZIP code.")
         else:
-            st.info("Tap Show winds. If location fails, enter a place name or ZIP code.")
+            st.info("Tap Show Winds. If location fails, enter a place name or ZIP code.")
     else:
         wind = get_wind_hours(lat, lon)
         now_local = datetime.now()
