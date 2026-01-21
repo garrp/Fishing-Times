@@ -23,43 +23,8 @@ HEADERS = {
 st.set_page_config(
     page_title="FishyNW.com | Fishing Tools",
     layout="centered",
+    initial_sidebar_state="collapsed",
 )
-
-# -------------------------------------------------
-# Sidebar auto-hide (best effort)
-# -------------------------------------------------
-if "collapse_sidebar" not in st.session_state:
-    st.session_state["collapse_sidebar"] = False
-
-def request_sidebar_collapse():
-    st.session_state["collapse_sidebar"] = True
-
-def run_sidebar_collapse_if_needed():
-    if not st.session_state.get("collapse_sidebar"):
-        return
-
-    components.html(
-        """
-<script>
-(function() {
-  function clickCollapse() {
-    try {
-      var btn =
-        parent.document.querySelector('button[title="Collapse sidebar"]') ||
-        parent.document.querySelector('button[aria-label="Collapse sidebar"]') ||
-        parent.document.querySelector('[data-testid="stSidebarCollapseButton"] button') ||
-        parent.document.querySelector('[data-testid="collapsedControl"] button');
-
-      if (btn) { btn.click(); }
-    } catch (e) {}
-  }
-  setTimeout(clickCollapse, 80);
-})();
-</script>
-""",
-        height=0,
-    )
-    st.session_state["collapse_sidebar"] = False
 
 # -------------------------------------------------
 # Styles (neutral + light green buttons with contrast)
@@ -178,9 +143,6 @@ div.stButton > button:disabled {
   color: #6b6b6b !important;
   border-color: #b6d6c1 !important;
 }
-
-/* Home menu layout */
-.home-menu { margin-top: 16px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -198,6 +160,34 @@ def normalize_place_query(s):
     s = "" if s is None else str(s)
     s = " ".join(s.strip().split())
     return s
+
+# -------------------------------------------------
+# Sidebar show/hide (RELIABLE)
+# -------------------------------------------------
+def apply_sidebar_visibility():
+    hide = (st.session_state.get("nav_mode", "home") == "home")
+    if hide:
+        st.markdown(
+            """
+<style>
+/* Hide the entire sidebar when on Home */
+section[data-testid="stSidebar"] { display: none !important; }
+div[data-testid="collapsedControl"] { display: none !important; }
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+<style>
+/* Show sidebar when in tools mode */
+section[data-testid="stSidebar"] { display: block !important; }
+div[data-testid="collapsedControl"] { display: block !important; }
+</style>
+""",
+            unsafe_allow_html=True,
+        )
 
 # -------------------------------------------------
 # Location / Geocoding
@@ -549,7 +539,7 @@ def species_tip_db():
         },
         "Bluegill": {
             "temp_f": (65, 80),
-            "Depths": ["Top, Mid"],
+            "Depths": ["Top", "Mid"],
             "Baits": ["Tiny poppers", "Small jigs", "Worm pieces", "Micro plastics"],
             "Rigs": ["Float + small jig/hook", "Ultralight jighead"],
             "Top": ["Tiny poppers can work in summer near shade and cover."],
@@ -767,10 +757,13 @@ if "wind_place_display" not in st.session_state:
     st.session_state["wind_place_display"] = ""
 
 # Navigation mode:
-# - "home": show ALL tool buttons on Home page
-# - "sidebar": move the tool buttons into the sidebar after a tool selection
+# - "home": show ALL tool buttons on Home page and hide sidebar
+# - "sidebar": show sidebar buttons when user is inside a tool
 if "nav_mode" not in st.session_state:
     st.session_state["nav_mode"] = "home"
+
+# Apply sidebar visibility BEFORE rendering sidebar
+apply_sidebar_visibility()
 
 PAGE_TITLES = {
     "Home": "",
@@ -786,14 +779,11 @@ def nav_to(tool_name):
 
     if tool_name == "Home":
         st.session_state["nav_mode"] = "home"
-        request_sidebar_collapse()
         return
 
     st.session_state["nav_mode"] = "sidebar"
     if tool_name == "Best fishing times":
         st.session_state["best_go"] = False
-
-    request_sidebar_collapse()
 
 tool = st.session_state["tool"]
 
@@ -828,10 +818,6 @@ if st.session_state.get("nav_mode") == "sidebar":
         if st.button("Speedometer", use_container_width=True, key="nav_speed"):
             nav_to("Speedometer")
             st.rerun()
-
-    run_sidebar_collapse_if_needed()
-else:
-    run_sidebar_collapse_if_needed()
 
 # -------------------------------------------------
 # Home page (landing page with all buttons)
