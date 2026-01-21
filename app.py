@@ -145,6 +145,25 @@ section[data-testid="stSidebar"] { width: 320px; }
 .home-center .header-logo { max-width: 100%; margin: 0 auto; }
 .home-center .header-logo img { max-width: 92vw; }
 
+/* Consent screen logo area */
+.consent-logo-full {
+  width: 100%;
+  height: 72vh;
+  margin-top: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(0,0,0,0.14);
+  background: rgba(0,0,0,0.02);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.consent-logo-full img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 /* Lists */
 .tip-h { font-weight: 800; margin-top: 10px; }
 .bul { margin-top: 8px; }
@@ -180,23 +199,9 @@ div.stButton > button:disabled {
   border-color: #b6d6c1 !important;
 }
 
-/* Consent screen logo area */
-.consent-logo-full {
-  width: 100%;
-  height: 72vh;
-  margin-top: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(0,0,0,0.14);
-  background: rgba(0,0,0,0.02);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.consent-logo-full img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+/* Home menu layout */
+.home-menu {
+  margin-top: 16px;
 }
 </style>
 """,
@@ -441,7 +446,6 @@ def inject_wiggle_button(button_text, delay_ms=5000):
 
 # -------------------------------------------------
 # Species tips database (depth-aware) + baits + rigs
-# Depths: allowed values among ["Top", "Mid", "Bottom"]
 # -------------------------------------------------
 def species_tip_db():
     return {
@@ -774,7 +778,7 @@ def render_header(title, centered=False):
         st.markdown(
             "<div class='home-center'>"
             "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
-            "<div class='small' style='margin-top:10px;'>Use the menu to open a tool.</div>"
+            "<div class='small' style='margin-top:10px;'>Pick a tool below to get started.</div>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -800,6 +804,12 @@ if "lon" not in st.session_state:
 if "best_go" not in st.session_state:
     st.session_state["best_go"] = False
 
+# Navigation mode:
+# - "home": show ALL tool buttons on Home page (first landing after consent)
+# - "sidebar": move the tool buttons into the sidebar after first tool selection
+if "nav_mode" not in st.session_state:
+    st.session_state["nav_mode"] = "home"
+
 # -------------------------------------------------
 # Consent gate (must happen before analytics events)
 # -------------------------------------------------
@@ -823,40 +833,50 @@ PAGE_TITLES = {
     "Speedometer": "Speedometer",
 }
 
-# -------------------------------------------------
-# Sidebar navigation (with centered logo at top)
-# -------------------------------------------------
-with st.sidebar:
-    st.markdown("<div class='sb-logo'><img src='" + LOGO_URL + "'></div>", unsafe_allow_html=True)
-    st.caption("Version " + APP_VERSION)
+def nav_to(tool_name):
+    st.session_state["tool"] = tool_name
+    # Once they pick any tool, move the menu into the sidebar forever this session
+    if tool_name != "Home":
+        st.session_state["nav_mode"] = "sidebar"
 
-    if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
-        st.session_state["tool"] = "Best fishing times"
+    if tool_name in ["Best fishing times", "Wind forecast"]:
         st.session_state["lat"], st.session_state["lon"] = get_location()
+
+    if tool_name == "Best fishing times":
         st.session_state["best_go"] = False
-        request_sidebar_collapse()
 
-    if st.button("Wind forecast", use_container_width=True, key="nav_wind"):
-        st.session_state["tool"] = "Wind forecast"
-        st.session_state["lat"], st.session_state["lon"] = get_location()
+    if st.session_state["nav_mode"] == "sidebar":
         request_sidebar_collapse()
-
-    if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
-        st.session_state["tool"] = "Trolling depth calculator"
-        request_sidebar_collapse()
-
-    if st.button("Species tips", use_container_width=True, key="nav_species"):
-        st.session_state["tool"] = "Species tips"
-        request_sidebar_collapse()
-
-    if st.button("Speedometer", use_container_width=True, key="nav_speed"):
-        st.session_state["tool"] = "Speedometer"
-        request_sidebar_collapse()
-
-# Run the collapse after the sidebar has rendered
-run_sidebar_collapse_if_needed()
 
 tool = st.session_state["tool"]
+
+# -------------------------------------------------
+# Sidebar navigation (only after first tool selection)
+# -------------------------------------------------
+if st.session_state.get("nav_mode") == "sidebar":
+    with st.sidebar:
+        st.markdown("<div class='sb-logo'><img src='" + LOGO_URL + "'></div>", unsafe_allow_html=True)
+        st.caption("Version " + APP_VERSION)
+
+        if st.button("Home", use_container_width=True, key="nav_home"):
+            nav_to("Home")
+
+        if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
+            nav_to("Best fishing times")
+
+        if st.button("Wind forecast", use_container_width=True, key="nav_wind"):
+            nav_to("Wind forecast")
+
+        if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
+            nav_to("Trolling depth calculator")
+
+        if st.button("Species tips", use_container_width=True, key="nav_species"):
+            nav_to("Species tips")
+
+        if st.button("Speedometer", use_container_width=True, key="nav_speed"):
+            nav_to("Speedometer")
+
+    run_sidebar_collapse_if_needed()
 
 # -------------------------------------------------
 # Analytics: tool_open when tool changes
@@ -873,7 +893,41 @@ if tool != st.session_state["ga_last_tool"]:
 # -------------------------------------------------
 if tool == "Home":
     render_header("", centered=True)
-    st.stop()
+
+    # Only show the big menu on the Home page BEFORE the first tool selection.
+    if st.session_state.get("nav_mode") == "home":
+        st.markdown("<div class='home-menu'></div>", unsafe_allow_html=True)
+
+        r1 = st.columns(2)
+        with r1[0]:
+            if st.button("Best fishing times", use_container_width=True, key="home_best_times"):
+                nav_to("Best fishing times")
+                st.rerun()
+        with r1[1]:
+            if st.button("Wind forecast", use_container_width=True, key="home_wind"):
+                nav_to("Wind forecast")
+                st.rerun()
+
+        r2 = st.columns(2)
+        with r2[0]:
+            if st.button("Trolling depth calculator", use_container_width=True, key="home_depth"):
+                nav_to("Trolling depth calculator")
+                st.rerun()
+        with r2[1]:
+            if st.button("Species tips", use_container_width=True, key="home_species"):
+                nav_to("Species tips")
+                st.rerun()
+
+        r3 = st.columns(1)
+        with r3[0]:
+            if st.button("Speedometer", use_container_width=True, key="home_speed"):
+                nav_to("Speedometer")
+                st.rerun()
+
+        st.stop()
+    else:
+        st.markdown("<div class='card'><div class='card-title'>Menu</div><div class='small'>Use the sidebar to switch tools.</div></div>", unsafe_allow_html=True)
+        st.stop()
 
 # -------------------------------------------------
 # Header (all other pages)
