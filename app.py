@@ -1,20 +1,19 @@
 # app.py
 # FishyNW.com - Fishing Tools
-# Version 1.9.0
+# Version 1.7.8
 # ASCII ONLY. No Unicode. No smart quotes. No special dashes.
 
 from datetime import datetime, timedelta, date
-import time
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.7.8"
 
 LOGO_URL = "https://fishynw.com/wp-content/uploads/2025/07/FishyNW-Logo-transparent-with-letters-e1755409608978.png"
 
 HEADERS = {
-    "User-Agent": "FishyNW-App-1.9.0",
+    "User-Agent": "FishyNW-App-1.7.8",
     "Accept": "application/json",
 }
 
@@ -28,98 +27,222 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# State
+# Session defaults (MUST be before sidebar CSS logic)
 # -------------------------------------------------
-if "tab" not in st.session_state:
-    st.session_state["tab"] = "Home"
+if "tool" not in st.session_state:
+    st.session_state["tool"] = "Home"
 
-# Shared last-used location (lat/lon + label) so you set it once and all tools reuse it
-if "loc_lat" not in st.session_state:
-    st.session_state["loc_lat"] = None
-if "loc_lon" not in st.session_state:
-    st.session_state["loc_lon"] = None
-if "loc_label" not in st.session_state:
-    st.session_state["loc_label"] = ""
+# nav_mode:
+# - "home": hide sidebar entirely, show buttons on landing page
+# - "sidebar": show sidebar navigation
+if "nav_mode" not in st.session_state:
+    st.session_state["nav_mode"] = "home"
 
-# Home "quick pick" defaults
-if "quick_place" not in st.session_state:
-    st.session_state["quick_place"] = ""
+if "lat" not in st.session_state:
+    st.session_state["lat"] = None
+if "lon" not in st.session_state:
+    st.session_state["lon"] = None
+if "best_go" not in st.session_state:
+    st.session_state["best_go"] = False
+
+if "best_place" not in st.session_state:
+    st.session_state["best_place"] = ""
+if "best_place_matches" not in st.session_state:
+    st.session_state["best_place_matches"] = []
+if "best_place_choice" not in st.session_state:
+    st.session_state["best_place_choice"] = ""
+if "best_place_display" not in st.session_state:
+    st.session_state["best_place_display"] = ""
+
+if "wind_place" not in st.session_state:
+    st.session_state["wind_place"] = ""
+if "wind_place_matches" not in st.session_state:
+    st.session_state["wind_place_matches"] = []
+if "wind_place_choice" not in st.session_state:
+    st.session_state["wind_place_choice"] = ""
+if "wind_place_display" not in st.session_state:
+    st.session_state["wind_place_display"] = ""
 
 # -------------------------------------------------
-# CSS (bigger tap targets, clear sections, no sidebar fighting)
+# Sidebar show/hide (RELIABLE - multiple selectors)
+# -------------------------------------------------
+def apply_sidebar_visibility():
+    hide = (st.session_state.get("nav_mode", "home") == "home")
+
+    if hide:
+        st.markdown(
+            """
+<style>
+/* Hide sidebar across Streamlit DOM variants */
+section[data-testid="stSidebar"],
+aside[data-testid="stSidebar"],
+div[data-testid="stSidebar"],
+[data-testid="stSidebar"] {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+}
+
+/* Hide the little expand/collapse control(s) across variants */
+div[data-testid="collapsedControl"],
+div[data-testid="stSidebarCollapsedControl"],
+button[data-testid="collapsedControl"],
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Some builds wrap the sidebar in a "stSidebar" container */
+.stSidebar {
+  display: none !important;
+  width: 0 !important;
+}
+
+/* Ensure main content uses full width */
+.block-container { max-width: 720px; }
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+<style>
+/* Ensure sidebar is visible in tool mode */
+section[data-testid="stSidebar"],
+aside[data-testid="stSidebar"],
+div[data-testid="stSidebar"],
+[data-testid="stSidebar"] {
+  display: block !important;
+  visibility: visible !important;
+  width: 320px !important;
+  min-width: 320px !important;
+  max-width: 320px !important;
+}
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+
+# IMPORTANT: apply visibility CSS early on every run
+apply_sidebar_visibility()
+
+# -------------------------------------------------
+# Styles (neutral + light green buttons with contrast)
 # -------------------------------------------------
 st.markdown(
     """
 <style>
-.block-container { max-width: 860px; padding-top: 1.05rem; padding-bottom: 4.0rem; }
-h1, h2, h3 { letter-spacing: -0.01em; }
-.small { opacity: 0.86; font-size: 0.95rem; }
-.muted { opacity: 0.78; }
-hr { margin: 1.0rem 0; }
-
-/* Logo header */
-.header {
-  display:flex; align-items:center; justify-content:space-between;
-  gap: 16px; margin-top: 6px; margin-bottom: 10px;
+.block-container {
+  padding-top: 1.15rem;
+  padding-bottom: 3.25rem;
+  max-width: 720px;
 }
-.logo img { width: 100%; max-width: 270px; height: auto; display:block; }
-@media (max-width: 520px){ .logo img { max-width: 72vw; } }
-.version { font-weight: 800; font-size: 0.95rem; opacity: 0.85; text-align:right; }
+
+/* Header */
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+.header-logo {
+  flex: 0 1 auto;
+  max-width: 70%;
+}
+.header-logo img {
+  width: 100%;
+  height: auto;
+  max-width: 260px;
+  display: block;
+}
+@media (max-width: 520px) {
+  .header-logo img { max-width: 70vw; }
+}
+.header-title {
+  text-align: right;
+  font-weight: 800;
+  font-size: 1.15rem;
+  line-height: 1.25rem;
+}
+.small { opacity: 0.82; font-size: 0.95rem; }
+
+/* Sidebar logo */
+.sb-logo {
+  text-align: center;
+  margin-top: 6px;
+  margin-bottom: 10px;
+}
+.sb-logo img {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  display: inline-block;
+}
 
 /* Cards */
 .card {
   border-radius: 18px;
   padding: 16px;
+  margin-top: 14px;
   border: 1px solid rgba(0,0,0,0.14);
   background: rgba(0,0,0,0.03);
-  margin-top: 12px;
 }
-@media (prefers-color-scheme: dark) {
-  .card { border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.06); }
-}
-.card-title { font-weight: 800; margin-bottom: 6px; }
-.kpi { font-size: 1.7rem; font-weight: 900; line-height: 1.0; }
-.kpi-sub { opacity: 0.86; margin-top: 6px; }
-
-/* Buttons - consistent + big */
-div.stButton > button, button[kind="primary"] {
-  background-color: #8fd19e !important;
-  color: #0b2e13 !important;
-  border: 1px solid #6fbf87 !important;
-  font-weight: 900 !important;
-  border-radius: 12px !important;
-  min-height: 48px !important;
-}
-div.stButton > button:hover, button[kind="primary"]:hover {
-  background-color: #7cc78f !important;
-  color: #08210f !important;
-}
-div.stButton > button:disabled {
-  background-color: #cfe8d6 !important;
-  color: #6b6b6b !important;
-  border-color: #b6d6c1 !important;
-}
-
-/* Inputs bigger on mobile */
-div[data-baseweb="input"] input,
-div[data-baseweb="select"] > div {
-  min-height: 46px !important;
-}
-
-/* Segmented controls (tabs) spacing */
-div[data-baseweb="tabs"] { margin-top: 8px; }
+.card-title { font-size: 1rem; opacity: 0.92; }
+.card-value { font-size: 1.6rem; font-weight: 800; }
+.compact-card { margin-top: 8px !important; padding: 14px 16px !important; }
 
 /* Footer */
 .footer {
   margin-top: 34px;
   padding-top: 18px;
   border-top: 1px solid rgba(0,0,0,0.14);
-  text-align:center;
+  text-align: center;
   font-size: 0.95rem;
-  opacity: 0.9;
+  opacity: 0.90;
 }
-@media (prefers-color-scheme: dark) {
-  .footer { border-top: 1px solid rgba(255,255,255,0.16); }
+
+/* Home */
+.home-center { text-align: center; margin-top: 18px; }
+.home-center .header-logo { max-width: 100%; margin: 0 auto; }
+.home-center .header-logo img { max-width: 92vw; }
+
+/* Lists */
+.tip-h { font-weight: 800; margin-top: 10px; }
+.bul { margin-top: 8px; }
+.bul li { margin-bottom: 6px; }
+
+/* Global button styling (light green, high contrast) */
+button[kind="primary"],
+button,
+div.stButton > button {
+  background-color: #8fd19e !important;
+  color: #0b2e13 !important;
+  border: 1px solid #6fbf87 !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+}
+button[kind="primary"]:hover,
+button:hover,
+div.stButton > button:hover {
+  background-color: #7cc78f !important;
+  color: #08210f !important;
+}
+button:active,
+div.stButton > button:active {
+  background-color: #6bbb83 !important;
+  color: #04160a !important;
+}
+button:disabled,
+div.stButton > button:disabled {
+  background-color: #cfe8d6 !important;
+  color: #6b6b6b !important;
+  border-color: #b6d6c1 !important;
 }
 </style>
 """,
@@ -127,35 +250,24 @@ div[data-baseweb="tabs"] { margin-top: 8px; }
 )
 
 # -------------------------------------------------
-# Network helpers (cache + tiny retries for mobile)
+# Helpers
 # -------------------------------------------------
-def _get(url, timeout=10):
-    last = None
-    for _ in range(2):
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=timeout)
-            r.raise_for_status()
-            return r
-        except Exception as e:
-            last = e
-            time.sleep(0.25)
-    raise last
-
-@st.cache_data(ttl=900, show_spinner=False)
 def get_json(url, timeout=10):
-    return _get(url, timeout=timeout).json()
+    r = requests.get(url, headers=HEADERS, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
 
-def norm(s):
+def normalize_place_query(s):
     s = "" if s is None else str(s)
-    return " ".join(s.strip().split())
+    s = " ".join(s.strip().split())
+    return s
 
 # -------------------------------------------------
-# Location and APIs
+# Location / Geocoding
 # -------------------------------------------------
-@st.cache_data(ttl=3600, show_spinner=False)
-def ip_location():
+def get_location():
     try:
-        data = get_json("https://ipinfo.io/json", timeout=6)
+        data = get_json("https://ipinfo.io/json", 6)
         loc = data.get("loc")
         if not loc:
             return None, None
@@ -164,12 +276,12 @@ def ip_location():
     except Exception:
         return None, None
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def geocode(place_name, count=10):
+def geocode_search(place_name, count=10):
     try:
-        q = norm(place_name)
+        q = normalize_place_query(place_name)
         if not q:
             return []
+
         url = (
             "https://geocoding-api.open-meteo.com/v1/search"
             "?name=" + requests.utils.quote(q) +
@@ -177,28 +289,32 @@ def geocode(place_name, count=10):
         )
         data = get_json(url, timeout=8)
         results = data.get("results") or []
+
         out = []
         for r in results:
             lat = r.get("latitude")
             lon = r.get("longitude")
             if lat is None or lon is None:
                 continue
+
             name = str(r.get("name") or q)
             admin1 = str(r.get("admin1") or "").strip()
             country = str(r.get("country") or "").strip()
+
             parts = [name]
             if admin1:
                 parts.append(admin1)
             if country:
                 parts.append(country)
-            label = ", ".join(parts)
-            out.append({"label": label, "lat": float(lat), "lon": float(lon)})
+
+            display = ", ".join(parts)
+            out.append({"label": display, "lat": float(lat), "lon": float(lon)})
+
         return out
     except Exception:
         return []
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def sun_times(lat, lon, day_iso):
+def get_sun_times(lat, lon, day_iso):
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=" + str(lat) +
@@ -208,15 +324,16 @@ def sun_times(lat, lon, day_iso):
         "&daily=sunrise,sunset&timezone=auto"
     )
     try:
-        data = get_json(url, timeout=10)
+        data = get_json(url)
         sr = data["daily"]["sunrise"][0]
         ss = data["daily"]["sunset"][0]
         return datetime.fromisoformat(sr), datetime.fromisoformat(ss)
     except Exception:
         return None, None
 
-def bite_windows(lat, lon, day_obj):
-    sr, ss = sun_times(lat, lon, day_obj.isoformat())
+def best_times(lat, lon, day_obj):
+    day_iso = day_obj.isoformat()
+    sr, ss = get_sun_times(lat, lon, day_iso)
     if not sr or not ss:
         return None
     return {
@@ -224,125 +341,120 @@ def bite_windows(lat, lon, day_obj):
         "evening": (ss - timedelta(hours=1), ss + timedelta(hours=1)),
     }
 
-@st.cache_data(ttl=600, show_spinner=False)
-def winds(lat, lon):
+def get_wind_hours(lat, lon):
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=" + str(lat) +
         "&longitude=" + str(lon) +
-        "&hourly=wind_speed_10m"
-        "&wind_speed_unit=mph"
-        "&timezone=auto"
-        "&current=wind_speed_10m"
+        "&hourly=wind_speed_10m&wind_speed_unit=mph&timezone=auto"
     )
     try:
-        data = get_json(url, timeout=10)
-        by_time = {}
+        data = get_json(url)
+        out = {}
         for t, s in zip(data["hourly"]["time"], data["hourly"]["wind_speed_10m"]):
-            by_time[t] = round(float(s), 1)
-        cur_dt = None
-        try:
-            cur_dt = datetime.fromisoformat(data.get("current", {}).get("time"))
-        except Exception:
-            cur_dt = None
-        cur_mph = None
-        try:
-            cur_mph = round(float(data.get("current", {}).get("wind_speed_10m")), 1)
-        except Exception:
-            cur_mph = None
-        return by_time, cur_dt, cur_mph
+            out[t] = round(s, 1)
+        return out
     except Exception:
-        return {}, None, None
+        return {}
 
-def split_winds(by_time, cur_dt):
+def split_current_future_winds(wind_by_time, now_local):
     current = []
     future = []
-    for k in sorted(by_time.keys()):
+    keys = sorted(list(wind_by_time.keys()))
+    for k in keys:
         try:
             dt = datetime.fromisoformat(k)
         except Exception:
             continue
-        mph = by_time.get(k)
+        mph = wind_by_time.get(k)
         label = dt.strftime("%a %b %d, %I %p").replace(" 0", " ").replace(":00", "")
-        if cur_dt is None:
-            future.append((label, mph))
+        if dt <= now_local:
+            current.append((label, mph))
         else:
-            if dt <= cur_dt:
-                current.append((label, mph))
-            else:
-                future.append((label, mph))
-    return current[-6:], future[:12]
+            future.append((label, mph))
+    current = current[-6:]
+    future = future[:12]
+    return current, future
 
-def depth_est(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
+def trolling_depth(speed_mph, weight_oz, line_out_ft, line_type, line_test_lb):
     if speed_mph <= 0 or weight_oz <= 0 or line_out_ft <= 0 or line_test_lb <= 0:
         return None
+
     type_drag = {"Braid": 1.0, "Fluorocarbon": 1.12, "Monofilament": 1.2}[line_type]
     test_ratio = line_test_lb / 20.0
     test_drag = test_ratio ** 0.35
     total_drag = type_drag * test_drag
+
     depth = 0.135 * (weight_oz / (total_drag * (speed_mph ** 1.35))) * line_out_ft
     return round(depth, 1)
 
-def speedometer_widget():
-    html = """
-    <div style="padding:12px;border:1px solid rgba(0,0,0,0.14);border-radius:18px;background:rgba(0,0,0,0.03);">
-      <style>
-        .row { display:flex; align-items:center; gap: 14px; }
-        .dial {
-          width: 150px; height: 150px; border-radius: 999px;
-          border: 2px solid rgba(0,0,0,0.18);
-          display:flex; align-items:center; justify-content:center;
-        }
-        @media (max-width: 520px){ .dial { width: 120px; height: 120px; } }
-        .mph { font-size: 44px; font-weight: 900; line-height: 1.0; }
-        @media (max-width: 520px){ .mph { font-size: 34px; } }
-      </style>
-      <div style="font-weight:900;font-size:18px;margin-bottom:6px;">Speedometer</div>
-      <div id="status" style="opacity:0.88;margin-bottom:8px;">Allow location permission...</div>
-      <div class="row">
-        <div class="dial">
-          <div style="text-align:center;">
-            <div id="mph" class="mph">--</div>
-            <div style="opacity:0.85;">mph</div>
-          </div>
-        </div>
-        <div style="flex:1;">
-          <div id="acc" style="opacity:0.82;">Accuracy: --</div>
-          <div style="opacity:0.80;margin-top:6px;">Tip: GPS speed reads best while moving steadily.</div>
-        </div>
-      </div>
-    </div>
-    <script>
-      function setText(id, txt){ var el=document.getElementById(id); if(el) el.textContent = txt; }
-      if (!navigator.geolocation) {
-        setText("status", "Geolocation not supported on this device/browser.");
-      } else {
-        navigator.geolocation.watchPosition(
-          function(pos) {
-            var spd = pos.coords.speed;
-            var acc = pos.coords.accuracy;
-            setText("acc", "Accuracy: " + Math.round(acc) + " m");
-            if (spd === null || spd === undefined) {
-              setText("mph", "--");
-              setText("status", "GPS lock... keep moving.");
-              return;
-            }
-            var mph = spd * 2.236936;
-            setText("mph", mph.toFixed(1));
-            setText("status", "GPS speed (live)");
-          },
-          function(err) { setText("status", "Location error: " + err.message); },
-          { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 }
-        );
+def inject_wiggle_button(button_text, delay_ms=5000):
+    safe_text = button_text.replace("\\", "\\\\").replace('"', '\\"')
+    components.html(
+        """
+<script>
+(function() {
+  var targetText = "%s";
+  var delay = %d;
+
+  function addWiggle(btn) {
+    try {
+      if (btn.getAttribute("data-wiggle") === "1") return;
+      btn.setAttribute("data-wiggle", "1");
+
+      var styleId = "wiggle-style";
+      if (!document.getElementById(styleId)) {
+        var st = document.createElement("style");
+        st.id = styleId;
+        st.textContent =
+          "@keyframes wiggle{0%%{transform:rotate(0deg)}15%%{transform:rotate(-3deg)}30%%{transform:rotate(3deg)}45%%{transform:rotate(-2deg)}60%%{transform:rotate(2deg)}75%%{transform:rotate(-1deg)}100%%{transform:rotate(0deg)}}" +
+          ".wiggle{animation:wiggle 0.55s ease-in-out 0s 3; transform-origin:center;}";
+        document.head.appendChild(st);
       }
-    </script>
-    """
-    components.html(html, height=250)
+
+      btn.classList.remove("wiggle");
+      void btn.offsetWidth;
+      btn.classList.add("wiggle");
+    } catch (e) {}
+  }
+
+  function findButton() {
+    try {
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
+      for (var i = 0; i < buttons.length; i++) {
+        var b = buttons[i];
+        var t = (b.innerText || "").trim();
+        if (t === targetText) return b;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  setTimeout(function() {
+    var btn = findButton();
+    if (btn) { addWiggle(btn); return; }
+
+    var tries = 0;
+    var iv = setInterval(function() {
+      tries += 1;
+      var b = findButton();
+      if (b) {
+        clearInterval(iv);
+        addWiggle(b);
+      }
+      if (tries >= 20) clearInterval(iv);
+    }, 250);
+  }, delay);
+})();
+</script>
+""" % (safe_text, int(delay_ms)),
+        height=0,
+    )
 
 # -------------------------------------------------
-# Species tips (kept, but presented cleaner)
+# Species tips
 # -------------------------------------------------
-def species_db():
+def species_tip_db():
     return {
         "Kokanee": {
             "temp_f": (42, 55),
@@ -534,382 +646,532 @@ def species_db():
         },
     }
 
-def render_species(name, info):
+def render_species_tips(name, db):
+    info = db.get(name)
+    if not info:
+        st.warning("No tips found.")
+        return
+
     lo, hi = info.get("temp_f", (None, None))
     depths = info.get("Depths", [])
     baits = info.get("Baits", [])
     rigs = info.get("Rigs", [])
 
-    st.markdown("<div class='card'><div class='card-title'>Most active water temp</div>"
-                "<div class='kpi'>" + str(lo) + " to " + str(hi) + " F</div>"
-                "<div class='kpi-sub'>Depth focus: " + ", ".join(depths) + "</div></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='card'>"
+        "<div class='card-title'>Species</div>"
+        "<div class='card-value'>" + name + "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("<div class='card'><div class='card-title'>Popular baits</div><ul>" +
-                    "".join(["<li>" + x + "</li>" for x in baits]) + "</ul></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("<div class='card'><div class='card-title'>Common rigs</div><ul>" +
-                    "".join(["<li>" + x + "</li>" for x in rigs]) + "</ul></div>", unsafe_allow_html=True)
+    if lo is not None and hi is not None:
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Most active water temperature range</div>"
+            "<div class='card-value'>" + str(lo) + " to " + str(hi) + " F</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    if baits:
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Popular baits</div>"
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in baits]) + "</ul>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    if rigs:
+        st.markdown(
+            "<div class='card'>"
+            "<div class='card-title'>Common rigs</div>"
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in rigs]) + "</ul>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
     def section(title, key):
         items = info.get(key, [])
         if not items:
             return
-        st.markdown("<div class='card'><div class='card-title'>" + title + "</div><ul>" +
-                    "".join(["<li>" + x + "</li>" for x in items]) + "</ul></div>", unsafe_allow_html=True)
-
-    if "Top" in depths:
-        section("Topwater tips", "Top")
-    if "Mid" in depths:
-        section("Mid water tips", "Mid")
-    if "Bottom" in depths:
-        section("Bottom tips", "Bottom")
-    if info.get("Quick"):
-        section("Quick tips", "Quick")
-
-# -------------------------------------------------
-# Location picker (shared)
-# -------------------------------------------------
-def set_location(lat, lon, label):
-    st.session_state["loc_lat"] = lat
-    st.session_state["loc_lon"] = lon
-    st.session_state["loc_label"] = label
-
-def location_status():
-    lat = st.session_state.get("loc_lat")
-    lon = st.session_state.get("loc_lon")
-    label = st.session_state.get("loc_label") or ""
-    if lat is None or lon is None:
-        return "No location set", None, None
-    if label:
-        return label, lat, lon
-    return "Saved location", lat, lon
-
-def location_panel(compact=False):
-    title = "Location" if not compact else "Location (shared)"
-    label, lat, lon = location_status()
-
-    st.markdown("<div class='card'><div class='card-title'>" + title + "</div>"
-                "<div class='small'>Current: <strong>" + label + "</strong></div>"
-                "<div class='small muted' style='margin-top:6px;'>Tip: Set once here. Best Times and Wind will use it.</div>"
-                "</div>", unsafe_allow_html=True)
-
-    place = st.text_input(
-        "Search by place name or ZIP",
-        value=st.session_state.get("quick_place", ""),
-        placeholder="Example: Hauser Lake, Idaho or 99201 or Spokane, WA",
-        key="quick_place_input",
-    )
-    st.session_state["quick_place"] = place
-
-    c1, c2 = st.columns(2)
-    with c1:
-        do_search = st.button("Search", use_container_width=True, key="quick_search_btn")
-    with c2:
-        do_auto = st.button("Use my approximate location", use_container_width=True, key="quick_auto_btn")
-
-    matches = []
-    if do_search:
-        matches = geocode(place, count=10) if norm(place) else []
-        st.session_state["__matches"] = matches
-    else:
-        matches = st.session_state.get("__matches", [])
-
-    if matches:
-        labels = [m["label"] for m in matches]
-        choice = st.selectbox("Choose a match", labels, index=0, key="quick_choice")
-        chosen = None
-        for m in matches:
-            if m["label"] == choice:
-                chosen = m
-                break
-        if chosen:
-            if st.button("Save this location", use_container_width=True, key="quick_save_btn"):
-                set_location(chosen["lat"], chosen["lon"], chosen["label"])
-                st.success("Saved location: " + chosen["label"])
-
-    if do_auto:
-        lat2, lon2 = ip_location()
-        if lat2 is None or lon2 is None:
-            st.warning("Could not detect your location. Try searching by place name or ZIP.")
-        else:
-            set_location(lat2, lon2, "Approximate location")
-            st.success("Saved approximate location.")
-
-    c3, c4 = st.columns(2)
-    with c3:
-        if st.button("Clear location", use_container_width=True, key="quick_clear_btn"):
-            set_location(None, None, "")
-            st.session_state["__matches"] = []
-            st.success("Cleared.")
-
-    with c4:
-        if st.button("Home", use_container_width=True, key="quick_home_btn"):
-            st.session_state["tab"] = "Home"
-            st.rerun()
-
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
-st.markdown(
-    "<div class='header'>"
-    "<div class='logo'><img src='" + LOGO_URL + "'></div>"
-    "<div class='version'>v" + APP_VERSION + "</div>"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-# -------------------------------------------------
-# Primary navigation (tabs)
-# -------------------------------------------------
-tabs = ["Home", "Best Times", "Wind", "Depth", "Species", "Speed"]
-default_tab = st.session_state.get("tab", "Home")
-try:
-    default_index = tabs.index(default_tab)
-except Exception:
-    default_index = 0
-
-selected = st.tabs(tabs)
-
-# Streamlit tabs do not directly return a value, so we render content in order.
-# We also keep a "quick jump" on Home to set session_state["tab"].
-
-# -------------------------------------------------
-# HOME
-# -------------------------------------------------
-with selected[0]:
-    st.session_state["tab"] = "Home"
-
-    st.markdown("## Quick start")
-    st.markdown("<div class='small'>Set your location once, then jump into Best Times or Wind.</div>", unsafe_allow_html=True)
-
-    location_panel(compact=True)
-
-    st.markdown("## Tools")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("Best Times", use_container_width=True, key="go_bt"):
-            st.session_state["tab"] = "Best Times"
-            st.rerun()
-    with c2:
-        if st.button("Wind", use_container_width=True, key="go_wi"):
-            st.session_state["tab"] = "Wind"
-            st.rerun()
-    with c3:
-        if st.button("Depth", use_container_width=True, key="go_dp"):
-            st.session_state["tab"] = "Depth"
-            st.rerun()
-
-    c4, c5, c6 = st.columns(3)
-    with c4:
-        if st.button("Species", use_container_width=True, key="go_sp"):
-            st.session_state["tab"] = "Species"
-            st.rerun()
-    with c5:
-        if st.button("Speed", use_container_width=True, key="go_sd"):
-            st.session_state["tab"] = "Speed"
-            st.rerun()
-    with c6:
-        pass
-
-    st.markdown("<div class='card'><div class='card-title'>How this app works</div>"
-                "<div class='small'>"
-                "<ul>"
-                "<li><strong>Best Times</strong> uses sunrise and sunset to show morning and evening bite windows.</li>"
-                "<li><strong>Wind</strong> shows current and upcoming wind speeds.</li>"
-                "<li><strong>Depth</strong> is a quick estimate for weight, line, and speed.</li>"
-                "<li><strong>Speed</strong> uses your phone GPS inside the page (browser permission required).</li>"
-                "</ul>"
-                "</div></div>", unsafe_allow_html=True)
-
-# -------------------------------------------------
-# BEST TIMES
-# -------------------------------------------------
-with selected[1]:
-    st.session_state["tab"] = "Best Times"
-
-    st.markdown("## Best fishing times")
-    st.markdown("<div class='small'>Morning and evening windows around sunrise and sunset. Use the shared location below.</div>", unsafe_allow_html=True)
-
-    label, lat, lon = location_status()
-    st.markdown("<div class='card'><div class='card-title'>Using location</div>"
-                "<div class='kpi' style='font-size:1.15rem;'>" + label + "</div>"
-                "<div class='small muted'>If this is wrong, change it on the Home tab or below.</div>"
-                "</div>", unsafe_allow_html=True)
-
-    with st.expander("Change location", expanded=False):
-        location_panel(compact=True)
-
-    st.markdown("### Date range")
-    c1, c2 = st.columns(2)
-    with c1:
-        start_day = st.date_input("Start date", value=date.today(), key="bt_start")
-    with c2:
-        end_day = st.date_input("End date", value=date.today(), key="bt_end")
-
-    if end_day < start_day:
-        st.warning("End date must be the same as or after start date.")
-    elif lat is None or lon is None:
-        st.info("Set a location first (Home tab) or search in the expander above.")
-    else:
-        # Primary action is one tap: results are shown immediately (no extra 'go' prompt)
-        days = []
-        cur = start_day
-        while cur <= end_day and len(days) < 14:
-            days.append(cur)
-            cur += timedelta(days=1)
-
-        if start_day != end_day and len(days) == 14 and end_day > days[-1]:
-            st.info("Showing first 14 days only. Shorten the range to see more detail.")
-
-        for d in days:
-            w = bite_windows(lat, lon, d)
-            st.markdown("### " + d.strftime("%A") + " - " + d.strftime("%b %d, %Y"))
-            if not w:
-                st.warning("Unable to calculate times for this day.")
-                continue
-
-            m0, m1 = w["morning"]
-            e0, e1 = w["evening"]
-
-            cA, cB = st.columns(2)
-            with cA:
-                st.markdown(
-                    "<div class='card'><div class='card-title'>Morning window</div>"
-                    "<div class='kpi'>" + m0.strftime("%I:%M %p").lstrip("0") + "</div>"
-                    "<div class='kpi-sub'>to " + m1.strftime("%I:%M %p").lstrip("0") + "</div>"
-                    "</div>",
-                    unsafe_allow_html=True,
-                )
-            with cB:
-                st.markdown(
-                    "<div class='card'><div class='card-title'>Evening window</div>"
-                    "<div class='kpi'>" + e0.strftime("%I:%M %p").lstrip("0") + "</div>"
-                    "<div class='kpi-sub'>to " + e1.strftime("%I:%M %p").lstrip("0") + "</div>"
-                    "</div>",
-                    unsafe_allow_html=True,
-                )
-            st.markdown("<hr>", unsafe_allow_html=True)
-
-# -------------------------------------------------
-# WIND
-# -------------------------------------------------
-with selected[2]:
-    st.session_state["tab"] = "Wind"
-
-    st.markdown("## Wind")
-    st.markdown("<div class='small'>Quick view: current wind plus the next few hours.</div>", unsafe_allow_html=True)
-
-    label, lat, lon = location_status()
-    st.markdown("<div class='card'><div class='card-title'>Using location</div>"
-                "<div class='kpi' style='font-size:1.15rem;'>" + label + "</div>"
-                "</div>", unsafe_allow_html=True)
-
-    with st.expander("Change location", expanded=False):
-        location_panel(compact=True)
-
-    if lat is None or lon is None:
-        st.info("Set a location first (Home tab) or search in the expander above.")
-    else:
-        by_time, cur_dt, cur_mph = winds(lat, lon)
-        cur_list, fut_list = split_winds(by_time, cur_dt)
-
-        # Top KPI card: current wind if available
-        if cur_mph is not None:
-            st.markdown(
-                "<div class='card'><div class='card-title'>Current wind</div>"
-                "<div class='kpi'>" + str(cur_mph) + " mph</div>"
-                "<div class='small muted'>From Open-Meteo current conditions.</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
-
-        if cur_list:
-            st.markdown("### Recent winds")
-            for label2, mph in cur_list:
-                st.markdown(
-                    "<div class='card'><div class='card-title'>" + label2 + "</div>"
-                    "<div class='kpi' style='font-size:1.4rem;'>" + str(mph) + " mph</div></div>",
-                    unsafe_allow_html=True,
-                )
-
-        if fut_list:
-            st.markdown("### Next hours")
-            for label2, mph in fut_list:
-                st.markdown(
-                    "<div class='card'><div class='card-title'>" + label2 + "</div>"
-                    "<div class='kpi' style='font-size:1.4rem;'>" + str(mph) + " mph</div></div>",
-                    unsafe_allow_html=True,
-                )
-
-# -------------------------------------------------
-# DEPTH
-# -------------------------------------------------
-with selected[3]:
-    st.session_state["tab"] = "Depth"
-
-    st.markdown("## Trolling depth")
-    st.markdown("<div class='small'>One-screen calculator. Change any value and the depth updates.</div>", unsafe_allow_html=True)
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        speed = st.number_input("Speed (mph)", 0.0, value=1.3, step=0.1)
-    with c2:
-        weight = st.number_input("Weight (oz)", 0.0, value=2.0, step=0.5)
-    with c3:
-        line_out = st.number_input("Line out (ft)", 0.0, value=100.0, step=5.0)
-
-    c4, c5 = st.columns(2)
-    with c4:
-        line_type = st.selectbox("Line type", ["Braid", "Fluorocarbon", "Monofilament"], index=0)
-    with c5:
-        line_test = st.selectbox("Line test (lb)", [6, 8, 10, 12, 15, 20, 25, 30, 40, 50], index=3)
-
-    d = depth_est(speed, weight, line_out, line_type, line_test)
-    if d is None:
-        st.markdown("<div class='card'><div class='card-title'>Estimated depth</div><div class='kpi'>--</div></div>", unsafe_allow_html=True)
-    else:
+        st.markdown("<div class='tip-h'>" + title + "</div>", unsafe_allow_html=True)
         st.markdown(
-            "<div class='card'><div class='card-title'>Estimated depth</div>"
-            "<div class='kpi'>" + str(d) + " ft</div>"
-            "<div class='small muted'>Heavier line runs shallower. Lure drag and current change results.</div>"
-            "</div>",
+            "<ul class='bul'>" + "".join(["<li>" + x + "</li>" for x in items]) + "</ul>",
             unsafe_allow_html=True,
         )
 
-# -------------------------------------------------
-# SPECIES
-# -------------------------------------------------
-with selected[4]:
-    st.session_state["tab"] = "Species"
+    if "Top" in depths:
+        section("Topwater", "Top")
+    if "Mid" in depths:
+        section("Mid water", "Mid")
+    if "Bottom" in depths:
+        section("Bottom", "Bottom")
 
-    st.markdown("## Species tips")
-    st.markdown("<div class='small'>Pick a species. You get temps, baits, rigs, and depth-specific tips.</div>", unsafe_allow_html=True)
+    if info.get("Quick"):
+        section("Quick tips", "Quick")
 
-    db = species_db()
-    names = sorted(list(db.keys()))
+def phone_speedometer_widget():
+    html = """
+    <div id="wrap" style="padding:12px;border:1px solid rgba(0,0,0,0.14);border-radius:18px;background:rgba(0,0,0,0.03);">
+      <style>
+        #wrap { --dial: 112px; --mph: 34px; --gap: 12px; }
+        @media (min-width: 720px) { #wrap { --dial: 160px; --mph: 44px; --gap: 16px; } }
+        .row { display:flex; align-items:center; gap: var(--gap); }
+        .dial {
+          width: var(--dial);
+          height: var(--dial);
+          border-radius: 999px;
+          border: 2px solid rgba(0,0,0,0.18);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+        }
+        .mph { font-size: var(--mph); font-weight: 800; line-height: 1.0; color: inherit; }
+      </style>
+
+      <div style="font-weight:800;font-size:18px;margin-bottom:6px;">Speedometer</div>
+      <div id="status" style="opacity:0.88;margin-bottom:8px;">Allow location permission...</div>
+
+      <div class="row">
+        <div class="dial">
+          <div style="text-align:center;">
+            <div id="mph" class="mph">--</div>
+            <div style="opacity:0.85;">mph</div>
+          </div>
+        </div>
+
+        <div style="flex:1;">
+          <div id="acc" style="opacity:0.82;">Accuracy: --</div>
+          <div style="opacity:0.80;margin-top:6px;">If mph is --, start moving and wait a few seconds.</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function setText(id, txt){ var el=document.getElementById(id); if(el) el.textContent = txt; }
+
+      if (!navigator.geolocation) {
+        setText("status", "Geolocation not supported on this device/browser.");
+      } else {
+        navigator.geolocation.watchPosition(
+          function(pos) {
+            var spd = pos.coords.speed;
+            var acc = pos.coords.accuracy;
+
+            setText("acc", "Accuracy: " + Math.round(acc) + " m");
+
+            if (spd === null || spd === undefined) {
+              setText("mph", "--");
+              setText("status", "GPS lock... keep moving.");
+              return;
+            }
+
+            var mph = spd * 2.236936;
+            setText("mph", mph.toFixed(1));
+            setText("status", "GPS speed (live)");
+          },
+          function(err) { setText("status", "Location error: " + err.message); },
+          { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 }
+        );
+      }
+    </script>
+    """
+    components.html(html, height=240)
+
+def render_header(title, centered=False):
+    if centered:
+        st.markdown(
+            "<div class='home-center'>"
+            "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
+            "<div class='small' style='margin-top:10px;'>Pick a tool below to get started.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown(
+        "<div class='header-row'>"
+        "<div class='header-logo'><img src='" + LOGO_URL + "'></div>"
+        "<div class='header-title'>" + title + "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+PAGE_TITLES = {
+    "Home": "",
+    "Best fishing times": "Best Fishing Times",
+    "Wind forecast": "Wind Forecast",
+    "Trolling depth calculator": "Trolling Depth Calculator",
+    "Species tips": "Species Tips",
+    "Speedometer": "Speedometer",
+}
+
+def nav_to(tool_name):
+    st.session_state["tool"] = tool_name
+    if tool_name == "Home":
+        st.session_state["nav_mode"] = "home"
+    else:
+        st.session_state["nav_mode"] = "sidebar"
+        if tool_name == "Best fishing times":
+            st.session_state["best_go"] = False
+
+tool = st.session_state["tool"]
+
+# -------------------------------------------------
+# Sidebar navigation (only when nav_mode == sidebar)
+# -------------------------------------------------
+if st.session_state.get("nav_mode") == "sidebar":
+    with st.sidebar:
+        st.markdown("<div class='sb-logo'><img src='" + LOGO_URL + "'></div>", unsafe_allow_html=True)
+        st.caption("Version " + APP_VERSION)
+
+        if st.button("Home", use_container_width=True, key="nav_home"):
+            nav_to("Home")
+            st.rerun()
+
+        if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
+            nav_to("Best fishing times")
+            st.rerun()
+
+        if st.button("Wind forecast", use_container_width=True, key="nav_wind"):
+            nav_to("Wind forecast")
+            st.rerun()
+
+        if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
+            nav_to("Trolling depth calculator")
+            st.rerun()
+
+        if st.button("Species tips", use_container_width=True, key="nav_species"):
+            nav_to("Species tips")
+            st.rerun()
+
+        if st.button("Speedometer", use_container_width=True, key="nav_speed"):
+            nav_to("Speedometer")
+            st.rerun()
+
+# -------------------------------------------------
+# Home page (landing page with all buttons)
+# -------------------------------------------------
+if tool == "Home":
+    render_header("", centered=True)
+
+    r1 = st.columns(2)
+    with r1[0]:
+        if st.button("Best fishing times", use_container_width=True, key="home_best_times"):
+            nav_to("Best fishing times")
+            st.rerun()
+    with r1[1]:
+        if st.button("Wind forecast", use_container_width=True, key="home_wind"):
+            nav_to("Wind forecast")
+            st.rerun()
+
+    r2 = st.columns(2)
+    with r2[0]:
+        if st.button("Trolling depth calculator", use_container_width=True, key="home_depth"):
+            nav_to("Trolling depth calculator")
+            st.rerun()
+    with r2[1]:
+        if st.button("Species tips", use_container_width=True, key="home_species"):
+            nav_to("Species tips")
+            st.rerun()
+
+    r3 = st.columns(1)
+    with r3[0]:
+        if st.button("Speedometer", use_container_width=True, key="home_speed"):
+            nav_to("Speedometer")
+            st.rerun()
+
+    st.stop()
+
+# -------------------------------------------------
+# Header (all other pages)
+# -------------------------------------------------
+render_header(PAGE_TITLES.get(tool, ""))
+
+# -------------------------------------------------
+# Main content
+# -------------------------------------------------
+if tool == "Best fishing times":
+    st.markdown("### Location")
+
+    place = st.text_input(
+        "Place name (optional)",
+        value=st.session_state.get("best_place", ""),
+        placeholder="Example: Spokane, WA   or   99201   or   Hauser Lake, Idaho",
+        key="best_place_input",
+    )
+    st.session_state["best_place"] = place
+
+    st.markdown("<div class='small'>Not case sensitive. Leave blank to use your current location.</div>", unsafe_allow_html=True)
+
+    cA, cB = st.columns(2)
+    with cA:
+        if st.button("Search place", use_container_width=True, key="best_search_place"):
+            q = normalize_place_query(place)
+            matches = geocode_search(q, count=10) if q else []
+            st.session_state["best_place_matches"] = matches
+            st.session_state["best_place_choice"] = matches[0]["label"] if matches else ""
+            st.session_state["best_place_display"] = ""
+    with cB:
+        if st.button("Use my current location", use_container_width=True, key="best_use_current"):
+            st.session_state["best_place_matches"] = []
+            st.session_state["best_place_choice"] = ""
+            st.session_state["best_place_display"] = ""
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+
+    matches = st.session_state.get("best_place_matches") or []
+    if matches:
+        labels = [m["label"] for m in matches]
+        choice = st.selectbox("Choose the correct match", labels, index=0, key="best_place_choice_select")
+        st.session_state["best_place_choice"] = choice
+
+    inject_wiggle_button("Display Best Fishing Times", 5000)
+
+    if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
+        st.session_state["best_go"] = True
+
+        q = normalize_place_query(place)
+        if q:
+            chosen_label = st.session_state.get("best_place_choice", "")
+            chosen = None
+            for m in matches:
+                if m["label"] == chosen_label:
+                    chosen = m
+                    break
+
+            if chosen is None:
+                matches2 = geocode_search(q, count=10)
+                st.session_state["best_place_matches"] = matches2
+                matches = matches2
+                chosen = matches2[0] if matches2 else None
+                st.session_state["best_place_choice"] = chosen["label"] if chosen else ""
+
+            if chosen:
+                st.session_state["lat"], st.session_state["lon"] = chosen["lat"], chosen["lon"]
+                st.session_state["best_place_display"] = chosen["label"]
+            else:
+                st.session_state["lat"], st.session_state["lon"] = None, None
+                st.session_state["best_place_display"] = ""
+        else:
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+            st.session_state["best_place_display"] = ""
+
+    if st.session_state.get("best_go"):
+        lat = st.session_state.get("lat")
+        lon = st.session_state.get("lon")
+        display_place = st.session_state.get("best_place_display", "")
+
+        if display_place:
+            st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
+
+        st.markdown("### Date range")
+        d0, d1 = st.columns(2)
+        with d0:
+            start_day = st.date_input("Start date", value=date.today(), key="range_start")
+        with d1:
+            end_day = st.date_input("End date", value=date.today(), key="range_end")
+
+        st.markdown("<div class='small'>Select a start and end date. Results will show for each day in the range.</div>", unsafe_allow_html=True)
+
+        if end_day < start_day:
+            st.warning("End date must be the same as or after start date.")
+        elif lat is None or lon is None:
+            if normalize_place_query(place):
+                st.warning("Could not find that place. Try City, State or a ZIP code.")
+            else:
+                st.warning("Could not detect your location. Try entering a place name or ZIP code.")
+        else:
+            day_list = []
+            cur = start_day
+            while cur <= end_day:
+                day_list.append(cur)
+                if len(day_list) >= 14:
+                    break
+                cur = cur + timedelta(days=1)
+
+            if len(day_list) == 14 and end_day > day_list[-1]:
+                st.info("Showing first 14 days only. Shorten the range to see more detail.")
+
+            for d in day_list:
+                st.markdown("## " + d.strftime("%A") + " - " + d.strftime("%b %d, %Y"))
+
+                times = best_times(lat, lon, d)
+                if not times:
+                    st.warning("Unable to calculate fishing times for this day.")
+                    continue
+
+                m0, m1 = times["morning"]
+                e0, e1 = times["evening"]
+
+                st.markdown(
+                    "<div class='card compact-card'><div class='card-title'>Morning window</div>"
+                    "<div class='card-value'>" +
+                    m0.strftime("%I:%M %p").lstrip("0") +
+                    " - " +
+                    m1.strftime("%I:%M %p").lstrip("0") +
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown(
+                    "<div class='card compact-card'><div class='card-title'>Evening window</div>"
+                    "<div class='card-value'>" +
+                    e0.strftime("%I:%M %p").lstrip("0") +
+                    " - " +
+                    e1.strftime("%I:%M %p").lstrip("0") +
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+elif tool == "Wind forecast":
+    st.markdown("### Wind forecast")
+    st.markdown("<div class='small'>Current and future hourly winds from your location or a place name.</div>", unsafe_allow_html=True)
+
+    st.markdown("### Location")
+
+    place = st.text_input(
+        "Place name (optional)",
+        value=st.session_state.get("wind_place", ""),
+        placeholder="Example: Los Angeles, CA   or   90001   or   Hayden Lake, Idaho",
+        key="wind_place_input",
+    )
+    st.session_state["wind_place"] = place
+
+    st.markdown("<div class='small'>Not case sensitive. Leave blank to use your current location.</div>", unsafe_allow_html=True)
+
+    cA, cB = st.columns(2)
+    with cA:
+        if st.button("Search place", use_container_width=True, key="wind_search_place"):
+            q = normalize_place_query(place)
+            matches = geocode_search(q, count=10) if q else []
+            st.session_state["wind_place_matches"] = matches
+            st.session_state["wind_place_choice"] = matches[0]["label"] if matches else ""
+            st.session_state["wind_place_display"] = ""
+    with cB:
+        if st.button("Use my current location", use_container_width=True, key="wind_use_current"):
+            st.session_state["wind_place_matches"] = []
+            st.session_state["wind_place_choice"] = ""
+            st.session_state["wind_place_display"] = ""
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+
+    matches = st.session_state.get("wind_place_matches") or []
+    if matches:
+        labels = [m["label"] for m in matches]
+        choice = st.selectbox("Choose the correct match", labels, index=0, key="wind_place_choice_select")
+        st.session_state["wind_place_choice"] = choice
+
+    inject_wiggle_button("Display winds", 5000)
+
+    if st.button("Display winds", use_container_width=True, key="go_winds"):
+        q = normalize_place_query(place)
+        if q:
+            chosen_label = st.session_state.get("wind_place_choice", "")
+            chosen = None
+            for m in matches:
+                if m["label"] == chosen_label:
+                    chosen = m
+                    break
+
+            if chosen is None:
+                matches2 = geocode_search(q, count=10)
+                st.session_state["wind_place_matches"] = matches2
+                matches = matches2
+                chosen = matches2[0] if matches2 else None
+                st.session_state["wind_place_choice"] = chosen["label"] if chosen else ""
+
+            if chosen:
+                st.session_state["lat"], st.session_state["lon"] = chosen["lat"], chosen["lon"]
+                st.session_state["wind_place_display"] = chosen["label"]
+            else:
+                st.session_state["lat"], st.session_state["lon"] = None, None
+                st.session_state["wind_place_display"] = ""
+        else:
+            st.session_state["lat"], st.session_state["lon"] = get_location()
+            st.session_state["wind_place_display"] = ""
+
+    lat = st.session_state.get("lat")
+    lon = st.session_state.get("lon")
+    display_place = st.session_state.get("wind_place_display", "")
+
+    if display_place:
+        st.markdown("<div class='small'><strong>Using:</strong> " + display_place + "</div>", unsafe_allow_html=True)
+
+    if lat is None or lon is None:
+        if normalize_place_query(place):
+            st.warning("Could not find that place. Try City, State or a ZIP code.")
+        else:
+            st.info("Tap Display winds. If location fails, enter a place name or ZIP code.")
+    else:
+        wind = get_wind_hours(lat, lon)
+        now_local = datetime.now()
+
+        current, future = split_current_future_winds(wind, now_local)
+
+        if current:
+            st.markdown("#### Current winds")
+            for label, mph in current:
+                st.markdown(
+                    "<div class='card compact-card'><div class='card-title'>" + label +
+                    "</div><div class='card-value'>" + str(mph) + " mph</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+        if future:
+            st.markdown("#### Future winds")
+            for label, mph in future:
+                st.markdown(
+                    "<div class='card compact-card'><div class='card-title'>" + label +
+                    "</div><div class='card-value'>" + str(mph) + " mph</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+elif tool == "Trolling depth calculator":
+    st.markdown("### Trolling depth calculator")
+    st.markdown("<div class='small'>Location not required.</div>", unsafe_allow_html=True)
+
+    speed = st.number_input("Speed (mph)", 0.0, value=1.3, step=0.1)
+    weight = st.number_input("Weight (oz)", 0.0, value=2.0, step=0.5)
+    line_out = st.number_input("Line out (feet)", 0.0, value=100.0, step=5.0)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        line_type = st.radio("Line type", ["Braid", "Fluorocarbon", "Monofilament"])
+    with col2:
+        line_test = st.selectbox("Line test (lb)", [6, 8, 10, 12, 15, 20, 25, 30, 40, 50], index=3)
+
+    depth = trolling_depth(speed, weight, line_out, line_type, line_test)
+
+    st.markdown(
+        "<div class='card'><div class='card-title'>Estimated depth</div>"
+        "<div class='card-value'>" +
+        (str(depth) if depth is not None else "--") + " ft</div>"
+        "<div class='small' style='margin-top:8px;'>Heavier line runs shallower. Current and lure drag also affect results.</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+elif tool == "Species tips":
+    st.markdown("### Species tips")
+    st.markdown("<div class='small'>Pick a species and get tips plus its best activity temperature range, popular baits, and common rigs.</div>", unsafe_allow_html=True)
+
+    db = species_tip_db()
+    species_list = sorted(list(db.keys()))
+
     default_species = "Largemouth bass"
     try:
-        default_index = names.index(default_species)
+        default_index = species_list.index(default_species)
     except Exception:
         default_index = 0
 
-    # Search-friendly select
-    species = st.selectbox("Species", names, index=default_index)
-    info = db.get(species)
-    if info:
-        render_species(species, info)
+    species = st.selectbox("Species", species_list, index=default_index)
+    render_species_tips(species, db)
 
-# -------------------------------------------------
-# SPEED
-# -------------------------------------------------
-with selected[5]:
-    st.session_state["tab"] = "Speed"
-
-    st.markdown("## Speed")
-    st.markdown("<div class='small'>Live GPS speed from your phone browser. Grant location permission when asked.</div>", unsafe_allow_html=True)
-    speedometer_widget()
+else:
+    st.markdown("### Speedometer")
+    st.markdown("<div class='small'>GPS speed from your phone browser. Works best once GPS has a lock and you are moving.</div>", unsafe_allow_html=True)
+    phone_speedometer_widget()
 
 # -------------------------------------------------
 # Footer
