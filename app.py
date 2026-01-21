@@ -64,7 +64,6 @@ def run_sidebar_collapse_if_needed():
 
 # -------------------------------------------------
 # Styles (neutral + light green buttons with contrast)
-# Add: numeric-only keyboard for lat/lon inputs on mobile
 # -------------------------------------------------
 st.markdown(
     """
@@ -180,15 +179,6 @@ div.stButton > button:disabled {
   color: #6b6b6b !important;
   border-color: #b6d6c1 !important;
 }
-
-/* -------------------------------------------------
-   Numeric keyboard for lat/lon fields (mobile)
-   We set inputmode="decimal" and pattern to nudge
-   browsers to show a number keypad.
-------------------------------------------------- */
-.latlon input {
-  inputmode: decimal;
-}
 </style>
 """,
     unsafe_allow_html=True,
@@ -201,63 +191,6 @@ def get_json(url, timeout=10):
     r = requests.get(url, headers=HEADERS, timeout=timeout)
     r.raise_for_status()
     return r.json()
-
-def force_numeric_keyboard_for_keys(keys, inputmode="decimal"):
-    """
-    Best-effort: set inputmode on Streamlit text inputs so mobile shows numeric keypad.
-    Note: Streamlit renders inputs inside the app iframe; this works in most mobile browsers.
-    """
-    keys_js = "[" + ",".join(['"%s"' % k for k in keys]) + "]"
-    mode = str(inputmode).replace('"', "")
-    components.html(
-        """
-<script>
-(function() {
-  var keys = %s;
-  var mode = "%s";
-
-  function apply() {
-    try {
-      // Streamlit text inputs render as: div[data-testid="stTextInput"] input
-      var wrappers = Array.prototype.slice.call(parent.document.querySelectorAll('div[data-testid="stTextInput"]'));
-      for (var i = 0; i < wrappers.length; i++) {
-        var w = wrappers[i];
-        var inp = w.querySelector("input");
-        if (!inp) continue;
-
-        // Streamlit sets an id like: stTextInput-<key>
-        var id = inp.getAttribute("id") || "";
-        var forKey = false;
-
-        for (var k = 0; k < keys.length; k++) {
-          if (id.indexOf(keys[k]) !== -1) { forKey = true; break; }
-        }
-        if (!forKey) continue;
-
-        inp.setAttribute("inputmode", mode);
-        inp.setAttribute("pattern", "[0-9\\-\\.]*");
-        // Optional: prevent accidental autocomplete junk
-        inp.setAttribute("autocomplete", "off");
-        inp.setAttribute("autocorrect", "off");
-        inp.setAttribute("autocapitalize", "off");
-        inp.setAttribute("spellcheck", "false");
-      }
-    } catch (e) {}
-  }
-
-  // Try now and a few times after render
-  apply();
-  var tries = 0;
-  var iv = setInterval(function() {
-    tries += 1;
-    apply();
-    if (tries >= 20) clearInterval(iv);
-  }, 250);
-})();
-</script>
-""" % (keys_js, mode),
-        height=0,
-    )
 
 # -------------------------------------------------
 # Analytics consent banner (session-only)
@@ -931,39 +864,43 @@ if tool == "Best fishing times":
 
     st.markdown("### Location")
 
+    # Numeric-only inputs + explicit checkbox so "optional" is real
+    use_manual = st.checkbox("Use manual latitude and longitude", value=False, key="use_manual_best")
+
     c0, c1 = st.columns(2)
     with c0:
-        lat_in = st.text_input("Latitude (optional)", value=("" if lat is None else str(lat)), key="manual_lat")
+        lat_in = st.number_input(
+            "Latitude",
+            min_value=-90.0,
+            max_value=90.0,
+            value=(float(lat) if lat is not None else 0.0),
+            step=0.0001,
+            format="%.6f",
+            key="manual_lat_num",
+        )
     with c1:
-        lon_in = st.text_input("Longitude (optional)", value=("" if lon is None else str(lon)), key="manual_lon")
+        lon_in = st.number_input(
+            "Longitude",
+            min_value=-180.0,
+            max_value=180.0,
+            value=(float(lon) if lon is not None else 0.0),
+            step=0.0001,
+            format="%.6f",
+            key="manual_lon_num",
+        )
 
-    # Force numeric keyboard on these fields (best effort)
-    force_numeric_keyboard_for_keys(["manual_lat", "manual_lon"], inputmode="decimal")
-
-    use_manual = False
-    try:
-        if lat_in.strip() != "" and lon_in.strip() != "":
-            lat_m = float(lat_in.strip())
-            lon_m = float(lon_in.strip())
-            if -90.0 <= lat_m <= 90.0 and -180.0 <= lon_m <= 180.0:
-                lat, lon = lat_m, lon_m
-                use_manual = True
-            else:
-                st.warning("Latitude must be -90 to 90. Longitude must be -180 to 180.")
-    except Exception:
-        st.warning("Latitude and longitude must be numbers.")
-
-    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>If manual is off, the app uses your current location.</div>", unsafe_allow_html=True)
 
     inject_wiggle_button("Display Best Fishing Times", 5000)
 
     if st.button("Display Best Fishing Times", use_container_width=True, key="go_best_times"):
         ga_send_event("action", {"name": "display_best_times", "tool": "Best fishing times"}, debug=False)
         st.session_state["best_go"] = True
-        if not use_manual:
-            st.session_state["lat"], st.session_state["lon"] = get_location()
+
+        if use_manual:
+            st.session_state["lat"], st.session_state["lon"] = float(lat_in), float(lon_in)
         else:
-            st.session_state["lat"], st.session_state["lon"] = lat, lon
+            st.session_state["lat"], st.session_state["lon"] = get_location()
 
     if st.session_state.get("best_go"):
         lat = st.session_state.get("lat")
@@ -981,7 +918,7 @@ if tool == "Best fishing times":
         if end_day < start_day:
             st.warning("End date must be the same as or after start date.")
         elif lat is None or lon is None:
-            st.info("Enter latitude and longitude, or tap the button again to use current location.")
+            st.info("Turn on manual and enter lat/lon, or tap the button again to use current location.")
         else:
             day_list = []
             cur = start_day
@@ -1033,44 +970,47 @@ elif tool == "Wind forecast":
     lon = st.session_state.get("lon")
 
     st.markdown("### Location")
+
+    use_manual = st.checkbox("Use manual latitude and longitude", value=False, key="use_manual_wind")
+
     c0, c1 = st.columns(2)
     with c0:
-        lat_in = st.text_input("Latitude (optional)", value=("" if lat is None else str(lat)), key="wind_lat")
+        lat_in = st.number_input(
+            "Latitude",
+            min_value=-90.0,
+            max_value=90.0,
+            value=(float(lat) if lat is not None else 0.0),
+            step=0.0001,
+            format="%.6f",
+            key="wind_lat_num",
+        )
     with c1:
-        lon_in = st.text_input("Longitude (optional)", value=("" if lon is None else str(lon)), key="wind_lon")
+        lon_in = st.number_input(
+            "Longitude",
+            min_value=-180.0,
+            max_value=180.0,
+            value=(float(lon) if lon is not None else 0.0),
+            step=0.0001,
+            format="%.6f",
+            key="wind_lon_num",
+        )
 
-    # Force numeric keyboard on these fields (best effort)
-    force_numeric_keyboard_for_keys(["wind_lat", "wind_lon"], inputmode="decimal")
-
-    use_manual = False
-    try:
-        if lat_in.strip() != "" and lon_in.strip() != "":
-            lat_m = float(lat_in.strip())
-            lon_m = float(lon_in.strip())
-            if -90.0 <= lat_m <= 90.0 and -180.0 <= lon_m <= 180.0:
-                lat, lon = lat_m, lon_m
-                use_manual = True
-            else:
-                st.warning("Latitude must be -90 to 90. Longitude must be -180 to 180.")
-    except Exception:
-        st.warning("Latitude and longitude must be numbers.")
-
-    st.markdown("<div class='small'>Leave blank to use your current location.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>If manual is off, the app uses your current location.</div>", unsafe_allow_html=True)
 
     inject_wiggle_button("Display winds", 5000)
 
     if st.button("Display winds", use_container_width=True, key="go_winds"):
         ga_send_event("action", {"name": "display_winds", "tool": "Wind forecast"}, debug=False)
-        if not use_manual:
-            st.session_state["lat"], st.session_state["lon"] = get_location()
+        if use_manual:
+            st.session_state["lat"], st.session_state["lon"] = float(lat_in), float(lon_in)
         else:
-            st.session_state["lat"], st.session_state["lon"] = lat, lon
+            st.session_state["lat"], st.session_state["lon"] = get_location()
 
     lat = st.session_state.get("lat")
     lon = st.session_state.get("lon")
 
     if lat is None or lon is None:
-        st.info("Enter latitude and longitude, or tap Display winds.")
+        st.info("Tap Display winds. If manual is on, enter lat/lon first.")
     else:
         wind = get_wind_hours(lat, lon)
         now_local = datetime.now()
