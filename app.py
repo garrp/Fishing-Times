@@ -249,7 +249,6 @@ def render_analytics_consent_banner():
             st.session_state["analytics_consent"] = "declined"
             st.rerun()
 
-    # Full-screen-ish logo area BELOW the consent banner
     st.markdown(
         "<div class='consent-logo-full'><img src='" + LOGO_URL + "' alt='FishyNW Logo'></div>",
         unsafe_allow_html=True,
@@ -805,8 +804,8 @@ if "best_go" not in st.session_state:
     st.session_state["best_go"] = False
 
 # Navigation mode:
-# - "home": show ALL tool buttons on Home page (first landing after consent)
-# - "sidebar": move the tool buttons into the sidebar after first tool selection
+# - "home": show ALL tool buttons on Home page
+# - "sidebar": move the tool buttons into the sidebar after a tool selection
 if "nav_mode" not in st.session_state:
     st.session_state["nav_mode"] = "home"
 
@@ -835,9 +834,17 @@ PAGE_TITLES = {
 
 def nav_to(tool_name):
     st.session_state["tool"] = tool_name
-    # Once they pick any tool, move the menu into the sidebar forever this session
-    if tool_name != "Home":
-        st.session_state["nav_mode"] = "sidebar"
+
+    # IMPORTANT BEHAVIOR:
+    # - Any tool selection switches nav_mode to sidebar
+    # - Home selection switches nav_mode back to home (landing page with buttons)
+    if tool_name == "Home":
+        st.session_state["nav_mode"] = "home"
+        # Request sidebar collapse so the menu "goes away"
+        request_sidebar_collapse()
+        return
+
+    st.session_state["nav_mode"] = "sidebar"
 
     if tool_name in ["Best fishing times", "Wind forecast"]:
         st.session_state["lat"], st.session_state["lon"] = get_location()
@@ -845,37 +852,46 @@ def nav_to(tool_name):
     if tool_name == "Best fishing times":
         st.session_state["best_go"] = False
 
-    if st.session_state["nav_mode"] == "sidebar":
-        request_sidebar_collapse()
+    request_sidebar_collapse()
 
 tool = st.session_state["tool"]
 
 # -------------------------------------------------
-# Sidebar navigation (only after first tool selection)
+# Sidebar navigation (only when nav_mode == sidebar)
 # -------------------------------------------------
 if st.session_state.get("nav_mode") == "sidebar":
     with st.sidebar:
         st.markdown("<div class='sb-logo'><img src='" + LOGO_URL + "'></div>", unsafe_allow_html=True)
         st.caption("Version " + APP_VERSION)
 
+        # Home brings you back to landing page (buttons on page) AND collapses sidebar
         if st.button("Home", use_container_width=True, key="nav_home"):
             nav_to("Home")
+            st.rerun()
 
         if st.button("Best fishing times", use_container_width=True, key="nav_best_times"):
             nav_to("Best fishing times")
+            st.rerun()
 
         if st.button("Wind forecast", use_container_width=True, key="nav_wind"):
             nav_to("Wind forecast")
+            st.rerun()
 
         if st.button("Trolling depth calculator", use_container_width=True, key="nav_depth"):
             nav_to("Trolling depth calculator")
+            st.rerun()
 
         if st.button("Species tips", use_container_width=True, key="nav_species"):
             nav_to("Species tips")
+            st.rerun()
 
         if st.button("Speedometer", use_container_width=True, key="nav_speed"):
             nav_to("Speedometer")
+            st.rerun()
 
+    run_sidebar_collapse_if_needed()
+else:
+    # If we're in home mode, still honor any pending collapse request
     run_sidebar_collapse_if_needed()
 
 # -------------------------------------------------
@@ -889,45 +905,40 @@ if tool != st.session_state["ga_last_tool"]:
     ga_send_event("tool_open", {"tool": tool, "app_version": APP_VERSION}, debug=False)
 
 # -------------------------------------------------
-# Home page
+# Home page (landing page with all buttons)
 # -------------------------------------------------
 if tool == "Home":
     render_header("", centered=True)
 
-    # Only show the big menu on the Home page BEFORE the first tool selection.
-    if st.session_state.get("nav_mode") == "home":
-        st.markdown("<div class='home-menu'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='home-menu'></div>", unsafe_allow_html=True)
 
-        r1 = st.columns(2)
-        with r1[0]:
-            if st.button("Best fishing times", use_container_width=True, key="home_best_times"):
-                nav_to("Best fishing times")
-                st.rerun()
-        with r1[1]:
-            if st.button("Wind forecast", use_container_width=True, key="home_wind"):
-                nav_to("Wind forecast")
-                st.rerun()
+    r1 = st.columns(2)
+    with r1[0]:
+        if st.button("Best fishing times", use_container_width=True, key="home_best_times"):
+            nav_to("Best fishing times")
+            st.rerun()
+    with r1[1]:
+        if st.button("Wind forecast", use_container_width=True, key="home_wind"):
+            nav_to("Wind forecast")
+            st.rerun()
 
-        r2 = st.columns(2)
-        with r2[0]:
-            if st.button("Trolling depth calculator", use_container_width=True, key="home_depth"):
-                nav_to("Trolling depth calculator")
-                st.rerun()
-        with r2[1]:
-            if st.button("Species tips", use_container_width=True, key="home_species"):
-                nav_to("Species tips")
-                st.rerun()
+    r2 = st.columns(2)
+    with r2[0]:
+        if st.button("Trolling depth calculator", use_container_width=True, key="home_depth"):
+            nav_to("Trolling depth calculator")
+            st.rerun()
+    with r2[1]:
+        if st.button("Species tips", use_container_width=True, key="home_species"):
+            nav_to("Species tips")
+            st.rerun()
 
-        r3 = st.columns(1)
-        with r3[0]:
-            if st.button("Speedometer", use_container_width=True, key="home_speed"):
-                nav_to("Speedometer")
-                st.rerun()
+    r3 = st.columns(1)
+    with r3[0]:
+        if st.button("Speedometer", use_container_width=True, key="home_speed"):
+            nav_to("Speedometer")
+            st.rerun()
 
-        st.stop()
-    else:
-        st.markdown("<div class='card'><div class='card-title'>Menu</div><div class='small'>Use the sidebar to switch tools.</div></div>", unsafe_allow_html=True)
-        st.stop()
+    st.stop()
 
 # -------------------------------------------------
 # Header (all other pages)
